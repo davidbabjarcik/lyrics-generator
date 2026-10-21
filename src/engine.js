@@ -274,8 +274,31 @@ function beatPulse(R, sharp = 7) {
   return Math.exp(-((hb % R.beat) / R.beat) * sharp);
 }
 
+/* ---------- 3D: perspektívna projekcia bodu okolo stredu textu ---------- */
+// o: { rx, ry (rad), px, py, pz (pivot rotácie relatívne k stredu), cz (posun kamery) }
+function proj3(R, x, y, z, o = {}) {
+  const f = R.H * 1.4, L = R.L;
+  let X = x - L.cx - (o.px || 0), Y = y - L.cy - (o.py || 0), Z = z - (o.pz || 0);
+  if (o.ry) { const c = Math.cos(o.ry), s = Math.sin(o.ry); [X, Z] = [X * c + Z * s, -X * s + Z * c]; }
+  if (o.rx) { const c = Math.cos(o.rx), s = Math.sin(o.rx); [Y, Z] = [Y * c - Z * s, Y * s + Z * c]; }
+  X += o.px || 0; Y += o.py || 0; Z += (o.pz || 0) + (o.cz || 0);
+  const k = f / Math.max(f * 0.05, f + Z);
+  return { x: L.cx + X * k, y: L.cy + Y * k, k, z: Z, f };
+}
+// nakreslí písmeno na premietnutom mieste (sx/sy = sploštenie natočením)
+function paint3(R, g, P, o = {}, sx = 1, sy = 1) {
+  if (P.k <= 0 || Math.abs(sx) < 0.02 || Math.abs(sy) < 0.02) return;
+  const c = R.ctx;
+  c.save();
+  c.translate(P.x, P.y); c.scale(P.k * sx, P.k * sy); c.translate(-g.cx, -g.yc);
+  paint(R, [g], o);
+  c.restore();
+}
+// rozmazanie podľa vzdialenosti od roviny ostrosti
+const dof = (R, P, amt = 0.25) => Math.min(0.35, Math.abs(P.z) / P.f * amt) * R.L.px;
+
 /* =====================================================================
-   ŠTÝLY (01–16 podľa predlohy, 17–26 nové)
+   ŠTÝLY (01–16 podľa predlohy, 17–44 nové)
    ===================================================================== */
 const STYLES = [
   { key: 'clean', name: 'CLEAN', draw(R) {
@@ -781,14 +804,301 @@ const STYLES = [
     paint(R, L.words, { rgb: [0, 0, b], dx: sx + off, dy: sy, alpha: a, glow: 0.7 });
     c.restore();
   } },
+
+  /* ---------- 27–38 ---------- */
+  { key: 'scramble', name: 'SCRAMBLE', draw(R) {
+    const G = glyphs(R), n = G.length, L = R.L, CH = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789#$%&@*+=?';
+    const ti = Math.max(R.tin, 0.5), fr = Math.floor(R.t * 18);
+    const to = Math.max(R.tout, 0.001), outS = R.D - to;
+    G.forEach((g, i) => {
+      if (g.t.trim() === '') return;
+      const ord = n > 1 ? i / (n - 1) : 0;
+      const appear = ord * ti * 0.35, settle = ti * (0.45 + 0.55 * ord * 0.9 + rnd(i, 3) * 0.1);
+      const unset = R.tout > 0 ? outS + (1 - ord) * to * 0.5 : Infinity, gone = R.tout > 0 ? outS + to * (0.55 + 0.45 * (1 - ord)) : Infinity;
+      if (R.t < appear || R.t >= gone) return;
+      if (R.t >= settle && R.t < unset) { paint(R, [g], { alpha: 1, glow: 1 }); return; }
+      const ch = CH[Math.floor(rnd(fr, i * 13 + 7) * CH.length)];
+      paint(R, [{ t: ch, x: g.x, base: g.base }], { alpha: 0.75, glow: 0.3, rgb: mixRGB(R.rgb, R.acc, 0.5) });
+    });
+  } },
+
+  { key: 'particles', name: 'PARTICLES', draw(R) {
+    const G = glyphs(R), n = G.length, L = R.L, c = R.ctx, K = 14, sz = Math.max(1, 0.04 * L.px);
+    const ti = Math.max(R.tin, 0.5), to = Math.max(R.tout, 0.001);
+    c.save();
+    c.globalCompositeOperation = 'lighter';
+    G.forEach((g, i) => {
+      if (!g.t.trim()) return;
+      const ord = n > 1 ? i / (n - 1) : 0;
+      const p = E.ioc(prog(R.t, ord * ti * 0.3, ti * 0.7));
+      const q = R.tout > 0 ? E.ic(prog(R.t, R.D - to + rnd(i, 9) * to * 0.4, to * 0.6)) : 0;
+      const form = p * (1 - q);
+      if (form > 0.85) paint(R, [g], { alpha: (form - 0.85) / 0.15, glow: 1 });
+      if (form >= 0.999) return;
+      for (let k = 0; k < K; k++) {
+        const tx = g.x + rnd(i * 31 + k, 1) * g.w, ty = g.base - rnd(i * 31 + k, 2) * L.capH;
+        const ang = rnd(i * 31 + k, 3) * TAU, dist = (0.6 + rnd(i * 31 + k, 4) * 2.2) * L.px;
+        const sx = tx + Math.cos(ang) * dist, sy = ty + Math.sin(ang) * dist * 0.6 + (q > 0 ? -q * 0.6 * L.px : 0);
+        const x = lerp(sx, tx, form), y = lerp(sy, ty, form), a = (q > 0 ? 1 - q : p) * (1 - Math.max(0, form - 0.85) / 0.15) * R.vout;
+        if (a <= 0.01) continue;
+        c.fillStyle = rgba(R.rgb, Math.min(1, a));
+        c.fillRect(x - sz / 2, y - sz / 2, sz, sz);
+      }
+    });
+    c.restore();
+  } },
+
+  { key: 'sweep', name: 'LIGHT SWEEP', draw(R) {
+    const L = R.L, c = R.ctx, ti = Math.max(R.tin, 0.4);
+    const base = R.vis * Math.min(0.4, Math.max(0.25, R.dimA));
+    paint(R, L.words, { alpha: base, glow: 0.2, dy: (1 - R.vin) * 0.12 * L.px });
+    // pás svetla: pri nábehu a potom každé 4 doby
+    let ph;
+    if (R.t < ti) ph = R.t / ti;
+    else { const per = 4 * R.beat; ph = ((R.t - ti) % per) / (per * 0.6); }
+    if (ph >= 1) return;
+    const w = L.blockW + 4 * L.px, x = L.left - 2 * L.px + E.ioc(ph) * w, bw = 2 * L.px;
+    c.save();
+    c.beginPath(); c.rect(x - bw, 0, bw * 2, R.H); c.clip();
+    const g = c.createLinearGradient(x - bw, 0, x + bw, 0);
+    g.addColorStop(0, rgba(R.acc, 0)); g.addColorStop(0.5, rgba(R.acc, 1)); g.addColorStop(1, rgba(R.acc, 0));
+    paint(R, L.words, { alpha: R.vis, glow: 1.6, fill: g, rgb: R.acc, dy: (1 - R.vin) * 0.12 * L.px });
+    paint(R, L.words, { alpha: R.vis * 0.6, glow: 0, fill: g, dy: (1 - R.vin) * 0.12 * L.px });
+    c.restore();
+    c.save(); c.beginPath(); c.rect(x - bw * 0.35, 0, bw * 0.7, R.H); c.clip();
+    paint(R, L.words, { alpha: R.vis, glow: 1.4, rgb: R.acc, dy: (1 - R.vin) * 0.12 * L.px });
+    c.restore();
+  } },
+
+  { key: 'wipe', name: 'WIPE', draw(R) {
+    const L = R.L, c = R.ctx, ti = Math.max(R.tin, 0.3);
+    const p = E.ioc(prog(R.t, 0, ti)), q = R.tout > 0 ? E.ioc(prog(R.t, R.D - R.tout, R.tout)) : 0;
+    const x0 = L.left - 0.3 * L.px, x1 = L.right + 0.3 * L.px;
+    const xa = lerp(x0, x1, q), xb = lerp(x0, x1, p);
+    if (xb - xa > 0.5) {
+      c.save(); c.beginPath(); c.rect(xa, 0, xb - xa, R.H); c.clip();
+      paint(R, L.words, {});
+      c.restore();
+    }
+    const moving = (p > 0 && p < 1) || (q > 0 && q < 1);
+    if (moving) {
+      const x = p < 1 ? xb : xa, h = L.blockH / 2 + 0.45 * L.px;
+      strokePath(R, (c2, ox, oy) => { c2.moveTo(x + ox, L.cy - h + oy); c2.lineTo(x + ox, L.cy + h + oy); },
+        { lw: Math.max(1.5, 0.04 * L.px), alpha: 1, glow: 1.2 });
+    }
+  } },
+
+  { key: 'strobe', name: 'STROBE', draw(R) {
+    const L = R.L, c = R.ctx, fr = Math.floor(R.t * 24);
+    let a, gl, s = 1;
+    if (R.t < R.tin) { const on = rnd(fr, 5) < 0.35 + 0.65 * R.pin; a = on ? 1 : 0.06; gl = on ? 1.4 : 0; }
+    else { const pl = beatPulse(R, 6); a = lerp(0.42, 1, pl); gl = 0.2 + 1.3 * pl; s = 1 + 0.03 * pl; }
+    if (R.tout > 0 && R.t > R.D - R.tout) { const on = rnd(fr, 8) > R.pout; a *= on ? 1 - R.pout * 0.5 : 0; }
+    c.save(); zoom(c, L.cx, L.cy, s);
+    paint(R, L.words, { alpha: a, glow: gl });
+    c.restore();
+  } },
+
+  { key: 'extrude', name: 'EXTRUDE 3D', draw(R) {
+    const L = R.L, N = 14, p = E.oc(R.pin), q = E.ic(R.pout);
+    const ang = -Math.PI / 4 + 0.35 * Math.sin((TAU * R.t) / (8 * R.beat));
+    const depth = 0.32 * L.px * p * (1 - q) * (1 + 0.15 * beatPulse(R, 6));
+    for (let k = N; k >= 1; k--) {
+      const f = k / N;
+      paint(R, L.words, { mode: 'stroke', dx: -Math.cos(ang) * depth * f, dy: -Math.sin(ang) * depth * f, alpha: (1 - f) * 0.5 * R.vis + 0.05 * R.vis, glow: 0, lw: Math.max(1, 0.012 * L.px) });
+    }
+    paint(R, L.words, { alpha: R.vis, glow: 0.8 });
+  } },
+
+  { key: 'swing', name: 'SWING', draw(R) {
+    const L = R.L, ws = L.words, n = ws.length, c = R.ctx;
+    ws.forEach((w, i) => {
+      const p = stagIn(R, i, n, 0.5), q = stagOut(R, i, n, 0.5);
+      if (p <= 0) return;
+      const damp = Math.exp(-Math.max(0, R.t - (n > 1 ? (i / (n - 1)) * R.tin * 0.5 : 0)) * 2.2);
+      const ang = (1 - E.oc(p)) * 1.2 + damp * 0.35 * Math.sin(R.t * 7 + i) + 0.04 * Math.sin((TAU * R.t) / (2 * R.beat) + i * 0.9) + E.ic(q) * 0.9 * (i % 2 ? 1 : -1);
+      const py = w.base - L.capH * 1.25;
+      c.save();
+      c.translate(w.cx, py); c.rotate(ang * (i % 2 ? -1 : 1)); c.translate(-w.cx, -py);
+      paint(R, [w], { alpha: clamp(p * 2) * (1 - E.ic(q)), dy: E.ic(q) * 0.8 * L.px });
+      c.restore();
+    });
+  } },
+
+  { key: 'spiral', name: 'SPIRAL', draw(R) {
+    const G = glyphs(R), n = G.length, L = R.L, c = R.ctx;
+    G.forEach((g, i) => {
+      const p = E.oc(stagIn(R, i, n, 0.55)), q = E.ic(stagOut(R, i, n, 0.55, true));
+      const f = p * (1 - q);
+      if (f <= 0.01) return;
+      const a0 = (i / Math.max(1, n)) * TAU + (1 - f) * 3, rad = (1 - f) * 2.2 * L.px;
+      const x = g.cx + Math.cos(a0) * rad - g.cx, y = Math.sin(a0) * rad;
+      c.save();
+      c.translate(g.cx + x, g.yc + y); c.rotate((1 - f) * Math.PI * 1.5); c.scale(lerp(0.3, 1, f), lerp(0.3, 1, f)); c.translate(-g.cx, -g.yc);
+      paint(R, [g], { alpha: f, glow: f });
+      c.restore();
+    });
+  } },
+
+  { key: 'maskup', name: 'MASK UP', draw(R) {
+    const L = R.L, c = R.ctx, n = L.lines.length;
+    L.lines.forEach((ln, i) => {
+      const p = E.oe(stagIn(R, i, n, 0.35)), q = E.ie(stagOut(R, i, n, 0.35));
+      const top = ln.base - L.capH * 1.08, bot = ln.base + L.capH * 0.28;
+      c.save(); c.beginPath(); c.rect(-R.W, top - 0.04 * L.px, R.W * 3, bot - top + 0.08 * L.px); c.clip();
+      paint(R, ln.words, { dy: (1 - p) * (bot - top) - q * (bot - top), glow: 0.8 });
+      c.restore();
+    });
+    const k = E.oe(R.pin) * (1 - E.ic(R.pout)), hw = (L.blockW / 2 + 0.3 * L.px) * k;
+    if (hw > 1) strokePath(R, (c2, ox, oy) => { const y = L.bottom + 0.35 * L.px + oy; c2.moveTo(L.cx - hw + ox, y); c2.lineTo(L.cx + hw + ox, y); },
+      { lw: Math.max(1, 0.018 * L.px), alpha: 0.7, glow: 0.5 });
+  } },
+
+  { key: 'heartbeat', name: 'HEARTBEAT', draw(R) {
+    const L = R.L, c = R.ctx, hb = R.t - R.tin;
+    let s = E.ob(clamp(R.pin)) * lerp(1, 1.25, E.ic(R.pout)), g = 0.4;
+    if (hb > 0) {
+      const ph = (hb % R.beat) / R.beat;
+      const k = Math.exp(-ph * 14) + 0.6 * Math.exp(-Math.abs(ph - 0.22) * 22);
+      s *= 1 + 0.055 * k * R.vout; g += 1.1 * k;
+    }
+    if (s <= 0.01) return;
+    c.save(); zoom(c, L.cx, L.cy, s);
+    paint(R, L.words, { alpha: clamp(R.pin * 2) * R.vout, glow: g, rgb: mixRGB(R.rgb, R.acc, clamp(g - 0.4)) });
+    c.restore();
+  } },
+
+  { key: 'rain', name: 'RAIN', draw(R) {
+    const G = glyphs(R), L = R.L, ti = Math.max(R.tin, 0.5), to = Math.max(R.tout, 0.001);
+    G.forEach((g, i) => {
+      const d = rnd(i, 21) * ti * 0.55, p = prog(R.t, d, ti * 0.45);
+      if (p <= 0) return;
+      const od = R.tout > 0 ? R.D - to + rnd(i, 22) * to * 0.5 : Infinity, q = R.tout > 0 ? prog(R.t, od, to * 0.5) : 0;
+      if (q >= 1) return;
+      const y = -(1 - E.obn(p)) * (g.base + L.px) + q * q * 2 * L.px;
+      paint(R, [g], { alpha: clamp(p * 3) * (1 - q), dy: y, glow: 0.6 + 0.4 * p });
+    });
+  } },
+
+  { key: 'shatter', name: 'SHATTER', draw(R) {
+    const L = R.L, c = R.ctx, N = 9, y0 = L.top - 0.15 * L.px, h = (L.blockH + 0.3 * L.px) / N;
+    for (let k = 0; k < N; k++) {
+      const side = k % 2 ? 1 : -1, r1 = rnd(k, 31), r2 = rnd(k, 32);
+      const p = E.oe(prog(R.t, r1 * R.tin * 0.4, Math.max(0.05, R.tin * 0.6)));
+      const q = R.tout > 0 ? E.ie(prog(R.t, R.D - R.tout + r2 * R.tout * 0.4, R.tout * 0.6)) : 0;
+      const dx = side * ((1 - p) * (0.4 + r1) * 1.6 + q * (0.4 + r2) * 1.6) * L.px * 2;
+      const dy = ((1 - p) * (r2 - 0.5) + q * (r1 - 0.5)) * 0.6 * L.px;
+      const a = clamp(p * 1.5) * (1 - q);
+      if (a <= 0.01) continue;
+      c.save(); c.beginPath(); c.rect(-R.W, y0 + k * h, R.W * 3, h + 0.5); c.clip();
+      paint(R, L.words, { dx, dy, alpha: a, glow: 0.6 * a });
+      c.restore();
+    }
+  } },
+
+  /* ---------- 39–44: 3D priestor ---------- */
+  { key: 'fly3d', name: 'FLY THROUGH 3D', draw(R) {
+    const G = glyphs(R), L = R.L, c = R.ctx, f = R.H * 1.4, ti = Math.max(R.tin, 0.4);
+    // hviezdne pole letiace ku kamere
+    const speed = 0.5 + 0.5 * (1 - R.pin) + 1.5 * E.ic(R.pout);
+    c.save(); c.globalCompositeOperation = 'lighter';
+    for (let s = 0; s < 90; s++) {
+      const x0 = (rnd(s, 51) - 0.5) * R.W * 1.6, y0 = (rnd(s, 52) - 0.5) * R.H * 1.6;
+      const z = ((rnd(s, 53) * 6 - R.t * speed * 1.2) % 6 + 6) % 6 * f;
+      const k = f / (f + z), k2 = f / (f + z + f * 0.08 * speed);
+      const a = clamp(1 - z / (6 * f)) * 0.8 * R.vis;
+      c.strokeStyle = rgba(R.rgb, a); c.lineWidth = Math.max(1, 0.012 * L.px * k * 3);
+      c.beginPath(); c.moveTo(L.cx + x0 * k2, L.cy + y0 * k2); c.lineTo(L.cx + x0 * k, L.cy + y0 * k); c.stroke();
+    }
+    c.restore();
+    const p = E.oe(prog(R.t, 0, ti)), q = R.tout > 0 ? E.ie(prog(R.t, R.D - R.tout, R.tout)) : 0;
+    const z = (1 - p) * 7 * f - q * 0.92 * f;
+    const o = { ry: 0.12 * Math.sin(R.t * 0.9), rx: 0.08 * Math.sin(R.t * 0.7 + 1) };
+    const list = G.map(g => ({ g, P: proj3(R, g.cx, g.yc, z, o) })).sort((a, b) => b.P.z - a.P.z);
+    for (const { g, P } of list) paint3(R, g, P, { alpha: clamp(p * 3) * (1 - q), blur: dof(R, P, 0.06), glow: 0.5 + 0.5 * p });
+  } },
+
+  { key: 'orbit', name: 'ORBIT 3D', draw(R) {
+    const G = glyphs(R), L = R.L, p = E.oc(R.pin), q = E.ic(R.pout);
+    const ry = (1 - p) * -1.3 + 0.38 * Math.sin((TAU * R.t) / (16 * R.beat)) + q * 1.3;
+    const rx = 0.22 * Math.sin((TAU * R.t) / (12 * R.beat) + 0.5) * p;
+    const o = { ry, rx };
+    const list = G.map(g => ({ g, P: proj3(R, g.cx, g.yc, 0, o) })).sort((a, b) => b.P.z - a.P.z);
+    for (const { g, P } of list) paint3(R, g, P, { alpha: R.vis, blur: dof(R, P, 0.5), glow: clamp(1 - Math.abs(P.z) / (P.f * 0.4)) }, Math.cos(ry), Math.cos(rx));
+  } },
+
+  { key: 'cylinder', name: 'CYLINDER', draw(R) {
+    const G = glyphs(R), L = R.L, rc = Math.max(L.blockW * 0.85, L.px * 2);
+    const p = E.oc(R.pin), q = E.ic(R.pout);
+    const rot = (1 - p) * -Math.PI * 1.1 + q * Math.PI * 1.1 + 0.18 * Math.sin((TAU * R.t) / (8 * R.beat)) * p;
+    const list = G.map(g => {
+      const th = (g.cx - L.cx) / rc + rot;
+      const X = L.cx + Math.sin(th) * rc, Z = (1 - Math.cos(th)) * rc;
+      return { g, th, P: proj3(R, X, g.yc, Z, { rx: 0.18 }) };
+    }).sort((a, b) => b.P.z - a.P.z);
+    for (const { g, th, P } of list) {
+      const front = Math.cos(th);
+      paint3(R, g, P, { alpha: R.vis * (front > 0 ? 1 : 0.18), glow: Math.max(0, front), blur: front < 0 ? 0.04 * L.px : 0 }, front, 1);
+    }
+  } },
+
+  { key: 'floor', name: 'FLOOR 3D', draw(R) {
+    const G = glyphs(R), L = R.L, p = E.ioc(prog(R.t, 0, Math.max(R.tin, 0.5))), q = E.ie(R.pout);
+    const rx = (1 - p) * 1.35 - q * 1.35 + 0.05 * beatPulse(R, 6);
+    const o = { rx, py: L.bottom - L.cy };
+    const list = G.map(g => ({ g, P: proj3(R, g.cx, g.yc, 0, o) })).sort((a, b) => b.P.z - a.P.z);
+    for (const { g, P } of list) paint3(R, g, P, { alpha: clamp(p * 2.5) * (1 - q), blur: dof(R, P, 0.3), glow: p * (1 - q) }, 1, Math.cos(rx));
+    // podlaha – mriežka čiar k horizontu
+    const a = 0.35 * R.vis;
+    if (a > 0.01) strokePath(R, (c2, ox, oy) => {
+      for (let i = -6; i <= 6; i++) {
+        const A = proj3(R, L.cx + i * L.px * 0.9, L.bottom + 0.15 * L.px, 0, { rx: 1.5707, py: L.bottom - L.cy }), B = proj3(R, L.cx + i * L.px * 0.9, L.bottom + 0.15 * L.px + 6 * L.px, 0, { rx: 1.5707, py: L.bottom - L.cy });
+        c2.moveTo(A.x + ox, A.y + oy); c2.lineTo(B.x + ox, B.y + oy);
+      }
+    }, { alpha: a * 0.5, glow: 0, lw: Math.max(1, 0.01 * L.px) });
+  } },
+
+  { key: 'depth', name: 'DEPTH LAYERS', draw(R) {
+    const L = R.L, ws = L.words, n = ws.length, f = R.H * 1.4, G = glyphs(R);
+    const drift = { ry: 0.14 * Math.sin((TAU * R.t) / (8 * R.beat)), rx: 0.06 * Math.cos((TAU * R.t) / (10 * R.beat)) };
+    const items = [];
+    ws.forEach((w, i) => {
+      const lay = ((i % 3) - 1) * 0.25 * f;            // každé slovo v inej hĺbke
+      const p = E.oe(stagIn(R, i, n, 0.6)), q = E.ie(stagOut(R, i, n, 0.6));
+      const z = lay + (1 - p) * (rnd(i, 61) < 0.5 ? 3 : -0.7) * f - q * 0.8 * f;
+      G.filter(g => g.wi === i).forEach(g => items.push({ g, a: clamp(p * 2) * (1 - q), P: proj3(R, g.cx, g.yc, z, drift) }));
+    });
+    items.sort((a, b) => b.P.z - a.P.z);
+    for (const it of items) paint3(R, it.g, it.P, { alpha: it.a, blur: dof(R, it.P, 0.12), glow: clamp(1 - Math.abs(it.P.z) / (it.P.f * 0.5)) });
+  } },
+
+  { key: 'cube', name: 'CUBE 3D', draw(R) {
+    const G = glyphs(R), L = R.L, d = Math.max(L.blockW, L.blockH) / 2 + 0.4 * L.px;
+    const p = E.ioc(prog(R.t, 0, Math.max(R.tin, 0.4))), q = R.tout > 0 ? E.ioc(prog(R.t, R.D - R.tout, R.tout)) : 0;
+    const ry = (1 - p) * -Math.PI / 2 + q * Math.PI / 2 + 0.03 * Math.sin((TAU * R.t) / (4 * R.beat));
+    const o = { ry, pz: d, rx: -0.12 };
+    const list = G.map(g => ({ g, P: proj3(R, g.cx, g.yc, 0, o) })).sort((a, b) => b.P.z - a.P.z);
+    const face = Math.cos(ry);
+    for (const { g, P } of list) paint3(R, g, P, { alpha: R.vis * clamp(face * 1.4), glow: face }, face, 1);
+    // hrany kocky
+    strokePath(R, (c2, ox, oy) => {
+      const hw = d, hh = L.blockH / 2 + 0.4 * L.px;
+      const pts = [[-hw, -hh], [hw, -hh], [hw, hh], [-hw, hh]].map(([x, y]) => proj3(R, L.cx + x, L.cy + y, 0, o));
+      c2.moveTo(pts[0].x + ox, pts[0].y + oy); pts.slice(1).forEach(P => c2.lineTo(P.x + ox, P.y + oy)); c2.closePath();
+    }, { alpha: 0.45 * R.vis * clamp(face * 2), glow: 0.5, lw: Math.max(1, 0.015 * L.px) });
+  } },
 ];
 
 /* ---------- AUTO režim: iný štýl pre každý klip (deterministicky) ---------- */
 const AUTO_SETS = {
   all: ['clean', 'fade', 'outline', 'wordbyword', 'slide', 'stack', 'lines', 'scale', 'split', 'frame', 'chain', 'glitch', 'circle',
-    'fadewords', 'bar', 'typewriter', 'reveal', 'wave', 'neon', 'karaoke', 'bounce', 'zoom', 'echo', 'flip', 'rgb'],
-  calm: ['clean', 'fade', 'lines', 'frame', 'circle', 'fadewords', 'typewriter', 'reveal', 'karaoke', 'flip'],
-  energy: ['outline', 'slide', 'stack', 'scale', 'split', 'chain', 'glitch', 'wordbyword', 'bar', 'wave', 'neon', 'bounce', 'zoom', 'echo', 'rgb'],
+    'fadewords', 'bar', 'typewriter', 'reveal', 'wave', 'neon', 'karaoke', 'bounce', 'zoom', 'echo', 'flip', 'rgb',
+    'scramble', 'particles', 'sweep', 'wipe', 'strobe', 'extrude', 'swing', 'spiral', 'maskup', 'heartbeat', 'rain', 'shatter',
+    'fly3d', 'orbit', 'cylinder', 'floor', 'depth', 'cube'],
+  calm: ['clean', 'fade', 'lines', 'frame', 'circle', 'fadewords', 'typewriter', 'reveal', 'karaoke', 'flip', 'sweep', 'wipe', 'maskup', 'orbit', 'depth', 'particles'],
+  energy: ['outline', 'slide', 'stack', 'scale', 'split', 'chain', 'glitch', 'wordbyword', 'bar', 'wave', 'neon', 'bounce', 'zoom', 'echo', 'rgb',
+    'scramble', 'strobe', 'extrude', 'swing', 'spiral', 'heartbeat', 'rain', 'shatter', 'fly3d', 'cylinder', 'floor', 'cube'],
+  space: ['fly3d', 'orbit', 'cylinder', 'floor', 'depth', 'cube', 'extrude', 'zoom', 'flip', 'spiral'],
 };
 function autoStyles(texts, S) {
   const keys = AUTO_SETS[S.autoSet] || AUTO_SETS.all;

@@ -9,9 +9,9 @@ Jeden samostatný súbor `LyricsGenerator.html` (otvára sa dvojklikom v Chrome/
 Fonty a knižnice sú doň vložené ako base64 / inline — žiadne externé požiadavky.
 
 ## Štruktúra
-- `src/engine.js` — renderovací engine. Pole `STYLES` (26 štýlov: 01–16 podľa predlohy „Lyrics Template“, 17–26 nové),
+- `src/engine.js` — renderovací engine. Pole `STYLES` (44 štýlov: 01–16 podľa predlohy „Lyrics Template“, 17–44 nové, 39–44 v 3D),
   `autoStyles()` (AUTO režim — iný štýl pre každý klip), `getSlides()/joinSlides()` (klipy + časy `[mm:ss.cc]`),
-  `renderSongFrame()` (aktívny klip podľa času v skladbe), `glyphs(R)` (pozície jednotlivých písmen),
+  `renderSongFrame()` (aktívny klip podľa času v skladbe), `glyphs(R)` (pozície jednotlivých písmen), `proj3()/paint3()/dof()` (3D perspektíva, hĺbka ostrosti),
   `renderFrame(ctx, W, H, t, S, text, styleIdx, Doverride)`, rozloženie textu `makeLayout()`,
   kreslenie `paint()` (text so žiarou), `strokePath()` (čiary), časovanie `stagIn/stagOut/beatSpot`.
   Všetky rozmery sú relatívne k výške obrazu → náhľad aj export vyzerajú rovnako.
@@ -35,7 +35,10 @@ Po každej zmene v `src/` treba spustiť `python build.py`.
 ## Štýly (index → key)
 01 clean · 02 highlight (`*SLOVO*` v texte) · 03 fade · 04 outline · 05 wordbyword · 06 slide ·
 07 stack · 08 lines · 09 scale · 10 split · 11 frame · 12 chain · 13 glitch · 14 circle ·
-15 fadewords · 16 bar · 17 typewriter · 18 reveal · 19 wave · 20 neon · 21 karaoke · 22 bounce · 23 zoom · 24 echo · 25 flip · 26 rgb
+15 fadewords · 16 bar · 17 typewriter · 18 reveal · 19 wave · 20 neon · 21 karaoke · 22 bounce · 23 zoom · 24 echo · 25 flip · 26 rgb ·
+27 scramble · 28 particles · 29 sweep · 30 wipe · 31 strobe · 32 extrude · 33 swing · 34 spiral · 35 maskup ·
+36 heartbeat · 37 rain · 38 shatter · 39 fly3d · 40 orbit · 41 cylinder · 42 floor · 43 depth · 44 cube
+(AUTO sady v `AUTO_SETS`: all, calm, energy, space)
 
 ## Režim Skladba
 Nahraná skladba (dekódovaná na 48 kHz, pamätá sa v IndexedDB) + text, kde klip začína časom `[mm:ss.cc]`

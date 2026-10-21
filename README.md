@@ -5,7 +5,7 @@ Offline generátor animovaných textov pre LED obrazovku. Výsledok je jeden sú
 
 ## Použitie
 1. Napíš text — prázdny riadok = nový klip, Enter = zalomenie, `*SLOVO*` = zvýraznenie.
-2. Vyber štýl (26 variantov) alebo zapni **Auto režim** (každý klip iný štýl), font, veľkosť, žiaru.
+2. Vyber štýl (44 variantov vrátane 3D priestoru) alebo zapni **Auto režim** (každý klip iný štýl), font, veľkosť, žiaru.
 3. Nastav dĺžku, nábeh/odchod a BPM (krokové štýly idú do rytmu).
 4. Zadaj rozlíšenie (šírka × výška) a FPS, klikni **Exportovať MP4**
    (aktuálny klip alebo všetky naraz; voliteľne priamo do vybraného priečinka).
@@ -35,7 +35,7 @@ Export: H.264 MP4, čierne pozadie, voliteľné 2× vyhladzovanie (SSAA), kvalit
 Nastavenia aj nahrané fonty sa pamätajú v prehliadači.
 
 ## Štruktúra projektu
-- `src/engine.js` — renderovací engine, všetkých 26 štýlov (`STYLES`), `renderFrame()`, `renderSongFrame()`
+- `src/engine.js` — renderovací engine, všetkých 44 štýlov (`STYLES`), `renderFrame()`, `renderSongFrame()`
 - `src/audio.js` — analýza skladby (BPM, doby), import LRC/SRT
 - `src/app.js` — UI, náhľad, export (WebCodecs `VideoEncoder` + mp4-muxer)
 - `src/app.html` — HTML/CSS šablóna s miestami pre vloženie fontov a skriptov

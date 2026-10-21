@@ -95,7 +95,7 @@ input[type=color]::-webkit-color-swatch{border:0}
 .stylebar select{width:auto;height:28px}
 .stylebar .btn{height:28px}
 .stylebar .sp{flex:1}
-.styles{display:grid;grid-template-columns:repeat(9,minmax(0,1fr));gap:7px}
+.styles{display:grid;grid-template-columns:repeat(11,minmax(0,1fr));gap:6px;max-height:300px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:#333 transparent;padding-right:2px}
 .card.auto{border-color:#888;box-shadow:0 0 0 1px #888 inset}
 .card.auto span{color:#ddd}
 .seg{grid-auto-flow:column;grid-auto-columns:1fr}
@@ -195,7 +195,7 @@ input[type=color]::-webkit-color-swatch{border:0}
     <div class="stylebar">
       <span class="lbl">Štýl</span>
       <label class="check" title="Každý klip dostane iný štýl"><input type="checkbox" id="auto"><span class="lbl" style="color:#fff">Auto režim</span></label>
-      <select id="autoSet"><option value="all">Všetky štýly</option><option value="calm">Pokojné</option><option value="energy">Energické</option></select>
+      <select id="autoSet"><option value="all">Všetky štýly</option><option value="calm">Pokojné</option><option value="energy">Energické</option><option value="space">3D priestor</option></select>
       <button class="btn" id="autoShuffle" title="Iné náhodné poradie štýlov">Zamiešať</button>
       <span class="sp"></span>
       <span class="sub" id="styleNote" style="margin:0"></span>
