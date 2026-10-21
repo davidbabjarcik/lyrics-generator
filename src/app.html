@@ -80,8 +80,27 @@ input[type=color]::-webkit-color-swatch{border:0}
 .time{font:600 11px/1 "Segoe UI",system-ui,sans-serif;letter-spacing:.12em;color:var(--mute);min-width:96px;text-align:right;font-variant-numeric:tabular-nums}
 .beat{width:8px;height:8px;border-radius:50%;background:#fff;opacity:.12;flex:none}
 
+/* timeline */
+.timeline{position:relative;height:84px;background:var(--panel);border:1px solid var(--line);flex:none}
+.timeline canvas{display:block;width:100%;height:100%;cursor:crosshair}
+.timeline .tlhint{position:absolute;right:8px;top:5px;font-size:9.5px;letter-spacing:.18em;color:var(--dim);pointer-events:none;text-transform:uppercase}
+.tapbar{display:none;align-items:center;gap:12px;background:#fff;color:#000;padding:8px 12px;font-weight:700;font-size:11px;letter-spacing:.16em;text-transform:uppercase}
+.tapbar.show{display:flex}
+.tapbar .btn{color:#000;border-color:#000;height:28px}
+.tapbar b{font-size:13px}
+
 /* styles grid */
-.styles{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:8px}
+.stylebar{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.stylebar .check{margin-top:0}
+.stylebar select{width:auto;height:28px}
+.stylebar .btn{height:28px}
+.stylebar .sp{flex:1}
+.styles{display:grid;grid-template-columns:repeat(9,minmax(0,1fr));gap:7px}
+.card.auto{border-color:#888;box-shadow:0 0 0 1px #888 inset}
+.card.auto span{color:#ddd}
+.seg{grid-auto-flow:column;grid-auto-columns:1fr}
+.seg button:disabled{opacity:.3;cursor:default}
+.muted{opacity:.4}
 .card{position:relative;border:1px solid var(--line);background:#000;cursor:pointer;overflow:hidden;padding:0;display:flex;flex-direction:column;text-align:left}
 .card .th{position:relative;aspect-ratio:16/9;width:100%}
 .card canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
@@ -98,7 +117,7 @@ input[type=color]::-webkit-color-swatch{border:0}
 .status.err{color:var(--err)}
 .status.warn{color:var(--warn)}
 .status.ok{color:#fff}
-.seg{display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--line2)}
+.seg{display:grid;border:1px solid var(--line2)}
 .seg button{height:32px;background:transparent;border:0;cursor:pointer;font-size:10.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--mute);font-weight:600}
 .seg button+button{border-left:1px solid var(--line2)}
 .seg button.on{background:#fff;color:#000}
@@ -110,7 +129,7 @@ input[type=color]::-webkit-color-swatch{border:0}
 @media (max-width:1180px){
   .app{grid-template-columns:1fr;height:auto}
   .viewport{min-height:56vw}
-  .styles{grid-template-columns:repeat(4,minmax(0,1fr))}
+  .styles{grid-template-columns:repeat(6,minmax(0,1fr))}
   .panel{overflow:visible}
 }
 </style>
@@ -131,7 +150,7 @@ input[type=color]::-webkit-color-swatch{border:0}
     <section>
       <h2><b>01</b> TEXT</h2>
       <textarea id="text" spellcheck="false"></textarea>
-      <p class="hint">Prázdny riadok = <b>nový klip</b> · Enter = zalomenie<br><code>*SLOVO*</code> = zvýraznené slovo (štýl 02)</p>
+      <p class="hint">Prázdny riadok = <b>nový klip</b> · Enter = zalomenie<br><code>*SLOVO*</code> = zvýraznené slovo (štýl 02, 21)<br><code>[01:23.45]</code> na začiatku klipu = čas v skladbe</p>
       <label class="check"><input type="checkbox" id="upper"><span class="lbl">Veľké písmená</span></label>
       <div class="clips"><div class="lbl" id="clipsLbl" style="margin-bottom:7px">Klipy</div><div class="chips" id="clips"></div></div>
     </section>
@@ -166,13 +185,44 @@ input[type=color]::-webkit-color-swatch{border:0}
       <div class="beat" id="beatDot" title="Doba podľa BPM"></div>
       <div class="time" id="time">0.00 / 4.00 s</div>
     </div>
+    <div class="tapbar" id="tapbar">
+      <span>Ťukanie</span><b id="tapInfo"></b><span class="sp" style="flex:1"></span>
+      <span>Enter = začiatok klipu · Backspace = späť · Esc = koniec</span>
+      <button class="btn" id="tapEnd">Hotovo</button>
+    </div>
+    <div class="timeline" id="tlWrap" hidden title="Klik = posun prehrávania · ťahaj značku = zmena času klipu (Shift = posunie aj všetky ďalšie) · koliesko = zoom · dvojklik = celá skladba"><canvas id="timeline"></canvas></div>
+    <div class="stylebar">
+      <span class="lbl">Štýl</span>
+      <label class="check" title="Každý klip dostane iný štýl"><input type="checkbox" id="auto"><span class="lbl" style="color:#fff">Auto režim</span></label>
+      <select id="autoSet"><option value="all">Všetky štýly</option><option value="calm">Pokojné</option><option value="energy">Energické</option></select>
+      <button class="btn" id="autoShuffle" title="Iné náhodné poradie štýlov">Zamiešať</button>
+      <span class="sp"></span>
+      <span class="sub" id="styleNote" style="margin:0"></span>
+    </div>
     <div class="styles" id="styles"></div>
   </section>
 
   <!-- PRAVÝ PANEL -->
   <aside class="panel">
     <section>
-      <h2><b>03</b> ČAS</h2>
+      <h2><b>03</b> SKLADBA</h2>
+      <div class="seg" id="mode"><button data-v="clips">Klipy</button><button data-v="song">Skladba</button></div>
+      <div class="field"><div class="row"><button class="btn full" id="songLoad">Nahrať skladbu…</button><button class="btn" id="songDel" title="Odstrániť skladbu">✕</button></div>
+        <input type="file" id="songFile" accept="audio/*,.mp3,.wav,.m4a,.aac,.ogg,.flac,.opus" hidden></div>
+      <p class="sub" id="songInfo">Žiadna skladba — nahraj MP3/WAV a text sa načasuje do hudby.</p>
+      <div class="field"><div class="lbl">Časovanie textu</div>
+        <div class="grid2"><button class="btn" id="autoTime" title="Rozloží klipy rovnomerne po hudbe, zarovnané na doby">Automaticky</button><button class="btn" id="tapTime" title="Prehrá skladbu, Enterom označ začiatok každého klipu">Ťukať ⏎</button></div>
+        <div class="grid2" style="margin-top:6px"><button class="btn" id="lrcLoad">Import LRC/SRT</button><button class="btn" id="clearTime">Zmazať časy</button></div>
+        <input type="file" id="lrcFile" accept=".lrc,.srt,.vtt,.txt" hidden></div>
+      <div class="grid2">
+        <div class="field"><div class="lbl">Predstih (s)</div><input type="number" id="lead" min="0" max="3" step="0.05" title="O koľko skôr začne animácia pred časom klipu"></div>
+        <div class="field"><div class="lbl">Max. klip (s)</div><input type="number" id="songMax" min="1" max="120" step="0.5" title="Najdlhší čas, čo text ostane na obraze (pri dlhých pauzách zmizne)"></div>
+      </div>
+      <label class="check"><input type="checkbox" id="withAudio"><span class="lbl">Zvuk do videa</span></label>
+      <p class="hint" id="songHint">Čas sa zapíše do textu ako <code>[01:23.45]</code>. Klip iba s časom = pauza. Značky na časovej osi sa dajú ťahať myšou.</p>
+    </section>
+    <section id="timeSec">
+      <h2><b>04</b> ČAS</h2>
       <div class="grid2">
         <div class="field" style="margin-top:0"><div class="lbl">Dĺžka (s)</div><input type="number" id="duration" min="0.5" max="600" step="0.1"></div>
         <div class="field" style="margin-top:0"><div class="lbl">BPM</div><div class="row"><input type="number" id="bpm" min="40" max="240" step="1"><button class="btn" id="tap" title="Ťukaj do rytmu">TAP</button></div></div>
@@ -181,22 +231,23 @@ input[type=color]::-webkit-color-swatch{border:0}
       </div>
       <div class="field"><div class="lbl"><span>Dĺžka podľa dôb</span><output id="beatsOut"></output></div>
         <div class="chips" id="beatChips"></div></div>
-      <p class="hint">BPM riadi krokové štýly (03, 05, 07, 12, 15, 16), pulz a rytmus glitchov. Nábeh/odchod 0 = klip na slučku.</p>
+      <p class="hint">BPM riadi krokové štýly, pulz a rytmus efektov (pri skladbe sa zistí automaticky). Nábeh/odchod 0 = klip na slučku. V režime Skladba určujú dĺžku klipov časy v texte.</p>
     </section>
     <section>
-      <h2><b>04</b> VÝSTUP</h2>
+      <h2><b>05</b> VÝSTUP</h2>
       <div class="field" style="margin-top:0"><div class="lbl">Rozlíšenie (šírka × výška)</div>
         <div class="res"><input type="number" id="resW" min="64" max="8192" step="2"><span>×</span><input type="number" id="resH" min="64" max="8192" step="2"></div></div>
       <div class="chips" id="resChips" style="margin-top:8px"></div>
       <div class="grid2">
         <div class="field"><div class="lbl">FPS</div><select id="fps"><option>24</option><option>25</option><option>30</option><option>50</option><option>60</option></select></div>
-        <div class="field"><div class="lbl">Kvalita</div><select id="quality"><option value="std">Štandard</option><option value="high">Vysoká</option><option value="max">Maximálna</option></select></div>
+        <div class="field"><div class="lbl">Kvalita</div><select id="quality"><option value="std">Štandard</option><option value="high">Vysoká</option><option value="max">Maximálna</option><option value="ultra">Ultra (master)</option></select></div>
       </div>
+      <label class="check" title="Každá snímka sa vykreslí v 2× rozlíšení a zmenší – hladšie hrany, tenké čiary a žiara. Export je pomalší."><input type="checkbox" id="ssaa"><span class="lbl">Vyhladzovanie 2× (SSAA)</span></label>
       <p class="sub" id="estimate"></p>
     </section>
     <section>
-      <h2><b>05</b> EXPORT</h2>
-      <div class="seg" id="scope"><button data-v="current">Aktuálny klip</button><button data-v="all">Všetky klipy</button></div>
+      <h2><b>06</b> EXPORT</h2>
+      <div class="seg" id="scope"><button data-v="current">Aktuálny klip</button><button data-v="all">Všetky klipy</button><button data-v="song">Celá skladba</button></div>
       <div class="field"><div class="lbl">Ukladať do</div><button class="btn full" id="pickDir" style="text-align:left;text-transform:none;letter-spacing:.04em;font-weight:500">Stiahnuté súbory (predvolené)</button></div>
       <div class="field"><button class="btn primary" id="exportBtn">EXPORTOVAŤ MP4</button></div>
       <div class="grid2" style="margin-top:8px">
@@ -214,6 +265,9 @@ input[type=color]::-webkit-color-swatch{border:0}
 </script>
 <script>
 //@@ENGINE@@
+</script>
+<script>
+//@@AUDIO@@
 </script>
 <script>
 //@@APP@@

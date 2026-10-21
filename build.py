@@ -29,6 +29,7 @@ html = (ROOT / "src" / "app.html").read_text(encoding="utf-8")
 html = html.replace("/*@@FONTS@@*/", font_css())
 html = html.replace("//@@MP4MUXER@@", (ROOT / "node_modules/mp4-muxer/build/mp4-muxer.js").read_text(encoding="utf-8"))
 html = html.replace("//@@ENGINE@@", (ROOT / "src" / "engine.js").read_text(encoding="utf-8"))
+html = html.replace("//@@AUDIO@@", (ROOT / "src" / "audio.js").read_text(encoding="utf-8"))
 html = html.replace("//@@APP@@", (ROOT / "src" / "app.js").read_text(encoding="utf-8"))
 out = ROOT / "LyricsGenerator.html"
 out.write_text(html, encoding="utf-8")

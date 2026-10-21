@@ -5,16 +5,23 @@ Offline generátor animovaných textov pre LED obrazovku. Výsledok je jeden sú
 
 ## Použitie
 1. Napíš text — prázdny riadok = nový klip, Enter = zalomenie, `*SLOVO*` = zvýraznenie.
-2. Vyber štýl (16 variantov), font, veľkosť, žiaru.
+2. Vyber štýl (26 variantov) alebo zapni **Auto režim** (každý klip iný štýl), font, veľkosť, žiaru.
 3. Nastav dĺžku, nábeh/odchod a BPM (krokové štýly idú do rytmu).
 4. Zadaj rozlíšenie (šírka × výška) a FPS, klikni **Exportovať MP4**
    (aktuálny klip alebo všetky naraz; voliteľne priamo do vybraného priečinka).
 
-Export: H.264 MP4, čierne pozadie, kľúčová snímka každú sekundu.
+### Video do hudby
+1. V sekcii **Skladba** nahraj MP3/WAV — zistí sa tempo (BPM) a text sa rozloží po skladbe.
+2. Dolaď časy: **Ťukať ⏎** (počas prehrávania stlač Enter na začiatku každého klipu), ťahaním značiek
+   na časovej osi (Shift = posunie aj všetky ďalšie) alebo **Import LRC/SRT**.
+3. Export **Celá skladba** = jedno MP4 so zvukom (H.264 + AAC), uložené priamo do súboru.
+
+Export: H.264 MP4, čierne pozadie, voliteľné 2× vyhladzovanie (SSAA), kvalita až „Ultra (master)“.
 Nastavenia aj nahrané fonty sa pamätajú v prehliadači.
 
 ## Štruktúra projektu
-- `src/engine.js` — renderovací engine, všetkých 16 štýlov (`STYLES`), `renderFrame()`
+- `src/engine.js` — renderovací engine, všetkých 26 štýlov (`STYLES`), `renderFrame()`, `renderSongFrame()`
+- `src/audio.js` — analýza skladby (BPM, doby), import LRC/SRT
 - `src/app.js` — UI, náhľad, export (WebCodecs `VideoEncoder` + mp4-muxer)
 - `src/app.html` — HTML/CSS šablóna s miestami pre vloženie fontov a skriptov
 - `build.py` — zostaví samostatný `LyricsGenerator.html` (fonty a knižnice vložené ako base64)

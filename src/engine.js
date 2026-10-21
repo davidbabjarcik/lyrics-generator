@@ -15,6 +15,14 @@ const E = {
   ioc: x => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2),
   oe: x => (x >= 1 ? 1 : 1 - Math.pow(2, -10 * x)),
   ie: x => (x <= 0 ? 0 : Math.pow(2, 10 * x - 10)),
+  ob: x => 1 + 2.70158 * Math.pow(x - 1, 3) + 1.70158 * Math.pow(x - 1, 2), // out-back (mierny prekmit)
+  obn: x => { // out-bounce
+    const n = 7.5625, d = 2.75;
+    if (x < 1 / d) return n * x * x;
+    if (x < 2 / d) return n * (x -= 1.5 / d) * x + 0.75;
+    if (x < 2.5 / d) return n * (x -= 2.25 / d) * x + 0.9375;
+    return n * (x -= 2.625 / d) * x + 0.984375;
+  },
 };
 function hexRGB(h) {
   h = String(h || '#ffffff').replace('#', '');
@@ -33,14 +41,45 @@ function rnd(a, b = 0) {
 }
 function zoom(c, cx, cy, s) { c.translate(cx, cy); c.scale(s, s); c.translate(-cx, -cy); }
 
-/* ---------- text: klipy, riadky, slová, *zvýraznenie* ---------- */
+/* ---------- text: klipy, riadky, slová, *zvýraznenie*, [mm:ss.cc] časy ---------- */
+// Prázdny riadok = nový klip. Riadok začínajúci časom [mm:ss.cc] začína nový klip aj bez
+// prázdneho riadka (takto sa dá rovno vložiť LRC). Klip iba s časom = pauza (nič sa nezobrazí).
+const TAG_RE = /^[ \t]*\[(\d{1,3}):(\d{1,2}(?:[.,]\d{1,3})?)\][ \t]*/;
+const META_RE = /^[ \t]*\[[a-z#]+:[^\]]*\][ \t]*$/i; // LRC hlavička [ar:...], [ti:...]
 function getSlides(raw) {
-  const res = [], re = /\n[ \t]*(?:\n[ \t]*)+/g;
-  let last = 0, m;
-  const push = (s, start) => { if (s.trim()) res.push({ text: s, start, end: start + s.length }); };
-  while ((m = re.exec(raw))) { push(raw.slice(last, m.index), last); last = m.index + m[0].length; }
-  push(raw.slice(last), last);
+  const res = [];
+  let blk = null, pos = 0;
+  const flush = () => {
+    if (blk) {
+      const m = TAG_RE.exec(blk.raw);
+      let time = null, text = blk.raw;
+      if (m) { time = +m[1] * 60 + parseFloat(m[2].replace(',', '.')); text = blk.raw.slice(m[0].length); }
+      if (time != null || text.trim()) res.push({ text, raw: blk.raw, time, gap: time != null && !text.trim(), start: blk.start, end: blk.end });
+    }
+    blk = null;
+  };
+  for (const line of String(raw || '').replace(/\r/g, '').split('\n')) {
+    const ls = pos; pos += line.length + 1;
+    if (!line.trim() || META_RE.test(line)) { flush(); continue; }
+    if (blk && TAG_RE.test(line)) flush();
+    if (!blk) blk = { start: ls, raw: line }; else blk.raw += '\n' + line;
+    blk.end = ls + line.length;
+  }
+  flush();
   return res;
+}
+function fmtTag(t) {
+  t = Math.max(0, Math.round(t * 100) / 100);
+  const m = Math.floor(t / 60), s = t - m * 60;
+  return `[${String(m).padStart(2, '0')}:${s.toFixed(2).padStart(5, '0')}]`;
+}
+// zostaví text späť z klipov (s aktuálnymi časmi)
+function joinSlides(slides) {
+  return slides.map(s => {
+    const body = s.text.replace(/^[ \t]+/, '');
+    if (s.time == null) return body;
+    return fmtTag(s.time) + (body && body[0] !== '\n' ? ' ' : '') + body;
+  }).join('\n\n');
 }
 function parseSlide(raw, upper) {
   let s = String(raw || '').replace(/\r/g, '').trim();
@@ -210,8 +249,33 @@ function getScratch(W, H) {
   return cv;
 }
 
+// jednotlivé písmená (pozície v rámci slov) – pre efekty po písmenách
+function glyphs(R) {
+  if (R._g) return R._g;
+  const c = R.ctx, L = R.L, out = [];
+  c.save(); setFont(c, R.S, L.px);
+  L.words.forEach((w, wi) => {
+    const chars = Array.from(w.t);
+    let acc = '', x0 = 0;
+    chars.forEach(ch => {
+      acc += ch;
+      const x1 = c.measureText(acc).width, cw = Math.max(0, x1 - x0 - L.ls);
+      out.push({ t: ch, x: w.x + x0, w: cw, cx: w.x + x0 + cw / 2, yc: w.yc, base: w.base, wi, line: w.line });
+      x0 = x1;
+    });
+  });
+  c.restore();
+  return (R._g = out);
+}
+// fáza doby (0..1) a pulz, ktorý na začiatku každej doby vyskočí a doznie
+function beatPulse(R, sharp = 7) {
+  const hb = R.t - R.tin;
+  if (hb <= 0) return 0;
+  return Math.exp(-((hb % R.beat) / R.beat) * sharp);
+}
+
 /* =====================================================================
-   16 ŠTÝLOV
+   ŠTÝLY (01–16 podľa predlohy, 17–26 nové)
    ===================================================================== */
 const STYLES = [
   { key: 'clean', name: 'CLEAN', draw(R) {
@@ -537,7 +601,213 @@ const STYLES = [
       paint(R, [w], { alpha: p * R.vout * lerp(R.dimA, 1, b), glow: b, dy: (1 - p) * 0.2 * L.px });
     });
   } },
+
+  /* ---------- 17–26 ---------- */
+  { key: 'typewriter', name: 'TYPEWRITER', draw(R) {
+    const G = glyphs(R), n = G.length, L = R.L;
+    if (!n) return;
+    const span = clamp(n * 0.055, Math.max(0.15, R.tin), Math.max(0.2, (R.D - R.tout) * 0.7));
+    const shown = (R.t / span) * n;
+    G.forEach((g, i) => {
+      const p = clamp((shown - i) * 2.5);
+      if (p > 0) paint(R, [g], { alpha: p * R.vout, glow: 1, dy: (1 - p) * 0.04 * L.px });
+    });
+    const k = clamp(Math.floor(shown), 0, n), g = k > 0 ? G[k - 1] : G[0];
+    const x = k > 0 ? g.x + g.w + 0.09 * L.px : g.x - 0.12 * L.px;
+    const typing = shown < n;
+    const blink = typing || ((R.t - span) % R.beat) / R.beat < 0.5;
+    if (blink) {
+      const h = L.capH * 1.12, yb = g.base + L.capH * 0.08;
+      strokePath(R, (c, ox, oy) => { c.moveTo(x + ox, yb - h + oy); c.lineTo(x + ox, yb + oy); },
+        { lw: Math.max(1.5, 0.075 * L.px), alpha: R.vout * (typing ? 0.9 : 0.75), glow: 0.8 });
+    }
+  } },
+
+  { key: 'reveal', name: 'BLUR REVEAL', draw(R) {
+    const G = glyphs(R), n = G.length, L = R.L, c = R.ctx;
+    const ti = Math.max(R.tin, 0.35), to = Math.max(R.tout, 0.001);
+    const rank = G.map((_, i) => i).sort((a, b) => rnd(a, 17) - rnd(b, 17));
+    const ord = new Array(n); rank.forEach((gi, r) => { ord[gi] = n > 1 ? r / (n - 1) : 0; });
+    G.forEach((g, i) => {
+      const p = E.oc(prog(R.t, ord[i] * ti * 0.55, ti * 0.45));
+      const q = R.tout > 0 ? E.ic(prog(R.t, R.D - to + (1 - ord[i]) * to * 0.5, to * 0.5)) : 0;
+      const a = p * (1 - q);
+      if (a <= 0.004) return;
+      c.save();
+      zoom(c, g.cx, g.yc, 1 + (1 - p) * 0.55 + q * 0.35);
+      paint(R, [g], { alpha: a, blur: ((1 - p) * 0.22 + q * 0.18) * L.px, glow: p * (1 - q), dy: -(1 - p) * 0.08 * L.px });
+      c.restore();
+    });
+  } },
+
+  { key: 'wave', name: 'WAVE', draw(R) {
+    const G = glyphs(R), n = G.length, L = R.L;
+    const amp = 0.07 * L.px * (0.6 + 0.4 * beatPulse(R, 4));
+    G.forEach((g, i) => {
+      const p = E.oc(stagIn(R, i, n, 0.6)), q = E.ic(stagOut(R, i, n, 0.6));
+      const a = p * (1 - q);
+      if (a <= 0.004) return;
+      const wv = Math.sin((TAU * R.t) / (2 * R.beat) - i * 0.5) * amp;
+      paint(R, [g], { alpha: a, dy: (1 - p) * 0.7 * L.px + q * 0.5 * L.px + wv, glow: 0.4 + 0.6 * p });
+    });
+  } },
+
+  { key: 'neon', name: 'NEON', draw(R) {
+    const G = glyphs(R), n = G.length, L = R.L;
+    const ti = Math.max(R.tin, 0.3), fr = Math.floor(R.t * 22), bar = Math.floor(R.t / (4 * R.beat));
+    const lw = Math.max(1.2, 0.03 * L.px);
+    // vypnutá trubica – slabý obrys
+    paint(R, G, { mode: 'stroke', lw, alpha: 0.13 * R.vis, glow: 0 });
+    G.forEach((g, i) => {
+      const thr = clamp(R.t / ti * 1.15 - rnd(i, 23) * 0.6);
+      let on = rnd(fr, i * 7 + 1) < thr ? 1 : 0;
+      if (R.t >= ti) on = 1;
+      // občasné bliknutie počas taktu
+      const fl = Math.floor(rnd(bar, 41) * n);
+      if (R.t > ti && i === fl && ((R.t / (4 * R.beat)) % 1) < 0.06 && rnd(fr, 3) < 0.6) on = 0.25;
+      if (R.tout > 0 && R.t > R.D - R.tout) on *= rnd(fr, i * 3 + 9) < 1 - R.pout ? 1 : 0.15;
+      if (on <= 0) return;
+      paint(R, [g], { mode: 'stroke', lw, alpha: on * R.vout, glow: 1.5 * on });
+      paint(R, [g], { alpha: on * 0.22 * R.vout, glow: 0 });
+    });
+  } },
+
+  { key: 'karaoke', name: 'KARAOKE', draw(R) {
+    const L = R.L, c = R.ctx, ws = L.words;
+    const a0 = R.vis, dy = (1 - R.vin) * 0.15 * L.px;
+    const fillRGB = R.acc.join() === R.rgb.join() ? R.rgb : R.acc;
+    paint(R, ws, { alpha: a0 * Math.max(R.dimA, 0.12), glow: 0, dy });
+    const t0 = R.tin * 0.6, t1 = Math.max(t0 + 0.2, R.D - R.tout - 0.15);
+    const tot = ws.reduce((s, w) => s + w.t.length + 1, 0);
+    let pos = prog(R.t, t0, t1 - t0) * tot;
+    for (const w of ws) {
+      const len = w.t.length + 1, f = clamp(pos / len);
+      pos -= len;
+      if (f <= 0) break;
+      c.save();
+      if (f < 1) { c.beginPath(); c.rect(w.x - L.px, w.yc - 2 * L.px, L.px + w.w * f, 4 * L.px); c.clip(); }
+      paint(R, [w], { alpha: a0, glow: 1, dy, rgb: fillRGB });
+      c.restore();
+    }
+  } },
+
+  { key: 'bounce', name: 'BOUNCE', draw(R) {
+    const L = R.L, ws = L.words, n = ws.length, c = R.ctx;
+    const ti = Math.max(R.tin, 0.4), pulse = beatPulse(R, 8);
+    ws.forEach((w, i) => {
+      const s0 = n > 1 ? (i / (n - 1)) * ti * 0.5 : 0;
+      const p = prog(R.t, s0, ti * 0.5 + 0.25);
+      if (p <= 0) return;
+      const b = E.obn(p), q = R.tout > 0 ? E.ic(prog(R.t, R.D - R.tout + (i / Math.max(1, n)) * R.tout * 0.4, R.tout * 0.6)) : 0;
+      const land = p > 0.36 && p < 0.6 ? Math.sin(((p - 0.36) / 0.24) * Math.PI) : 0;
+      c.save();
+      c.translate(w.cx, w.base); c.scale(1 + land * 0.06, 1 - land * 0.1 + pulse * 0.05 * (1 - q)); c.translate(-w.cx, -w.base);
+      paint(R, [w], { alpha: clamp(p * 4) * (1 - q), dy: -(1 - b) * 1.4 * L.px + q * q * 1.6 * L.px });
+      c.restore();
+    });
+  } },
+
+  { key: 'zoom', name: 'ZOOM THROUGH', draw(R) {
+    const L = R.L, c = R.ctx, ti = Math.max(R.tin, 0.2);
+    const sc = t => {
+      const p = E.oe(prog(t, 0, ti)), q = R.tout > 0 ? E.ie(prog(t, R.D - R.tout, R.tout)) : 0;
+      return { s: lerp(0.15, 1, p) * lerp(1, 5, q), a: clamp(prog(t, 0, ti * 0.3)) * (1 - E.ic(clamp(q * 1.3))), p, q };
+    };
+    const cur = sc(R.t);
+    for (let j = 6; j >= 1; j--) {
+      const g = sc(R.t - j * 0.025);
+      if (Math.abs(g.s - cur.s) < 0.004) continue;
+      c.save(); zoom(c, L.cx, L.cy, g.s);
+      paint(R, L.words, { alpha: g.a * 0.16 * (1 - j / 7), glow: 0 });
+      c.restore();
+    }
+    const hb = beatPulse(R, 9) * (1 - cur.q);
+    c.save(); zoom(c, L.cx, L.cy, cur.s * (1 + 0.02 * hb));
+    paint(R, L.words, { alpha: cur.a, blur: ((1 - cur.p) * 0.15 + cur.q * 0.2) * L.px });
+    c.restore();
+  } },
+
+  { key: 'echo', name: 'ECHO', draw(R) {
+    const L = R.L, c = R.ctx, p = E.oc(R.pin);
+    // prílet troch kópií do stredu
+    if (R.pin < 1) for (const k of [1.6, 1.3]) {
+      c.save(); zoom(c, L.cx, L.cy, lerp(k, 1, p));
+      paint(R, L.words, { mode: 'stroke', alpha: (1 - p) * 0.5, glow: 0.3 });
+      c.restore();
+    }
+    // na každú dobu sa z textu odlepí obrys a rozpína sa
+    const hb = R.t - R.tin;
+    if (hb > 0) for (let k = 0; k < 3; k++) {
+      const age = (hb % R.beat) + k * R.beat;
+      if (age > hb) break;
+      const f = age / (1.6 * R.beat);
+      if (f >= 1) continue;
+      c.save(); zoom(c, L.cx, L.cy, 1 + E.oc(f) * 0.32);
+      paint(R, L.words, { mode: 'stroke', alpha: (1 - f) * 0.55 * R.vout, glow: 0.4 * (1 - f) });
+      c.restore();
+    }
+    c.save(); zoom(c, L.cx, L.cy, lerp(0.92, 1, p) * (1 + 0.015 * beatPulse(R, 8)));
+    paint(R, L.words, { alpha: p * R.vout, blur: E.ic(R.pout) * 0.1 * L.px });
+    c.restore();
+  } },
+
+  { key: 'flip', name: 'FLIP 3D', draw(R) {
+    const G = glyphs(R), n = G.length, c = R.ctx;
+    G.forEach((g, i) => {
+      const p = stagIn(R, i, n, 0.65), q = stagOut(R, i, n, 0.65);
+      if (p <= 0) return;
+      const ang = (1 - E.ob(p)) * (Math.PI / 2) + E.ic(q) * (Math.PI / 2);
+      const k = Math.cos(ang);
+      if (Math.abs(k) < 0.03 || q >= 1) return;
+      c.save();
+      c.translate(g.cx, g.yc); c.scale(1, k); c.translate(-g.cx, -g.yc);
+      paint(R, [g], { alpha: clamp(p * 3) * (0.35 + 0.65 * Math.abs(k)) * (1 - E.ic(q) * 0.3), glow: Math.abs(k) });
+      c.restore();
+    });
+  } },
+
+  { key: 'rgb', name: 'RGB SPLIT', draw(R) {
+    const L = R.L, c = R.ctx, p = E.oe(R.pin), q = E.ic(R.pout);
+    const off = ((1 - p) * 0.3 + q * 0.3 + beatPulse(R, 10) * 0.06 * (1 - q)) * L.px;
+    const fs = Math.floor(R.t * 30), shake = (1 - p) * 0.08 * L.px;
+    const sx = (rnd(fs, 1) - 0.5) * shake, sy = (rnd(fs, 2) - 0.5) * shake;
+    const a = clamp(R.pin * 2.5) * (1 - q);
+    const [r, g, b] = R.rgb;
+    c.save();
+    c.globalCompositeOperation = 'lighter';
+    zoom(c, L.cx, L.cy, lerp(1.25, 1, p) * lerp(1, 1.1, q));
+    paint(R, L.words, { rgb: [r, 0, 0], dx: sx - off, dy: sy, alpha: a, glow: 0.7 });
+    paint(R, L.words, { rgb: [0, g, 0], dx: sx, dy: sy + off * 0.15, alpha: a, glow: 0.7 });
+    paint(R, L.words, { rgb: [0, 0, b], dx: sx + off, dy: sy, alpha: a, glow: 0.7 });
+    c.restore();
+  } },
 ];
+
+/* ---------- AUTO režim: iný štýl pre každý klip (deterministicky) ---------- */
+const AUTO_SETS = {
+  all: ['clean', 'fade', 'outline', 'wordbyword', 'slide', 'stack', 'lines', 'scale', 'split', 'frame', 'chain', 'glitch', 'circle',
+    'fadewords', 'bar', 'typewriter', 'reveal', 'wave', 'neon', 'karaoke', 'bounce', 'zoom', 'echo', 'flip', 'rgb'],
+  calm: ['clean', 'fade', 'lines', 'frame', 'circle', 'fadewords', 'typewriter', 'reveal', 'karaoke', 'flip'],
+  energy: ['outline', 'slide', 'stack', 'scale', 'split', 'chain', 'glitch', 'wordbyword', 'bar', 'wave', 'neon', 'bounce', 'zoom', 'echo', 'rgb'],
+};
+function autoStyles(texts, S) {
+  const keys = AUTO_SETS[S.autoSet] || AUTO_SETS.all;
+  const set = keys.map(k => STYLES.findIndex(s => s.key === k)).filter(i => i >= 0);
+  const hi = STYLES.findIndex(s => s.key === 'highlight');
+  const seed = (S.autoSeed | 0) * 7919 + 13, out = [];
+  let prev = -1, prev2 = -1;
+  texts.forEach((tx, i) => {
+    let k;
+    if (/\*/.test(tx) && rnd(i, seed + 5) < 0.75) k = hi;
+    else {
+      let j = Math.floor(rnd(i, seed) * set.length);
+      for (let tries = 0; tries < set.length && (set[j] === prev || set[j] === prev2); tries++) j = (j + 1) % set.length;
+      k = set[j];
+    }
+    out.push(k); prev2 = prev; prev = k;
+  });
+  return out;
+}
 
 /* ---------- jedna snímka ---------- */
 function renderFrame(ctx, W, H, t, S, raw, styleIdx, Doverride) {
@@ -563,4 +833,18 @@ function renderFrame(ctx, W, H, t, S, raw, styleIdx, Doverride) {
   R.L = makeLayout(R, lines, st.lay || {});
   R.lw = Math.max(1, R.L.px * 0.02);
   ctx.save(); st.draw(R); ctx.restore();
+}
+
+/* ---------- skladba: klipy na časovej osi ---------- */
+// clips: [{ text, s, e, style }] zoradené podľa času, bez prekryvu
+function clipAt(clips, T) {
+  for (let k = 0; k < clips.length; k++) if (T >= clips[k].s && T < clips[k].e) return k;
+  return -1;
+}
+function renderSongFrame(ctx, W, H, T, S, clips) {
+  const k = clipAt(clips, T);
+  if (k < 0) { renderFrame(ctx, W, H, 0, S, '', 0); return -1; }
+  const c = clips[k];
+  renderFrame(ctx, W, H, T - c.s, S, c.text, c.style, c.e - c.s);
+  return k;
 }

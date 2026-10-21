@@ -99,8 +99,27 @@ input[type=color]::-webkit-color-swatch{border:0}
 .time{font:600 11px/1 "Segoe UI",system-ui,sans-serif;letter-spacing:.12em;color:var(--mute);min-width:96px;text-align:right;font-variant-numeric:tabular-nums}
 .beat{width:8px;height:8px;border-radius:50%;background:#fff;opacity:.12;flex:none}
 
+/* timeline */
+.timeline{position:relative;height:84px;background:var(--panel);border:1px solid var(--line);flex:none}
+.timeline canvas{display:block;width:100%;height:100%;cursor:crosshair}
+.timeline .tlhint{position:absolute;right:8px;top:5px;font-size:9.5px;letter-spacing:.18em;color:var(--dim);pointer-events:none;text-transform:uppercase}
+.tapbar{display:none;align-items:center;gap:12px;background:#fff;color:#000;padding:8px 12px;font-weight:700;font-size:11px;letter-spacing:.16em;text-transform:uppercase}
+.tapbar.show{display:flex}
+.tapbar .btn{color:#000;border-color:#000;height:28px}
+.tapbar b{font-size:13px}
+
 /* styles grid */
-.styles{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:8px}
+.stylebar{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.stylebar .check{margin-top:0}
+.stylebar select{width:auto;height:28px}
+.stylebar .btn{height:28px}
+.stylebar .sp{flex:1}
+.styles{display:grid;grid-template-columns:repeat(9,minmax(0,1fr));gap:7px}
+.card.auto{border-color:#888;box-shadow:0 0 0 1px #888 inset}
+.card.auto span{color:#ddd}
+.seg{grid-auto-flow:column;grid-auto-columns:1fr}
+.seg button:disabled{opacity:.3;cursor:default}
+.muted{opacity:.4}
 .card{position:relative;border:1px solid var(--line);background:#000;cursor:pointer;overflow:hidden;padding:0;display:flex;flex-direction:column;text-align:left}
 .card .th{position:relative;aspect-ratio:16/9;width:100%}
 .card canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
@@ -117,7 +136,7 @@ input[type=color]::-webkit-color-swatch{border:0}
 .status.err{color:var(--err)}
 .status.warn{color:var(--warn)}
 .status.ok{color:#fff}
-.seg{display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--line2)}
+.seg{display:grid;border:1px solid var(--line2)}
 .seg button{height:32px;background:transparent;border:0;cursor:pointer;font-size:10.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--mute);font-weight:600}
 .seg button+button{border-left:1px solid var(--line2)}
 .seg button.on{background:#fff;color:#000}
@@ -129,7 +148,7 @@ input[type=color]::-webkit-color-swatch{border:0}
 @media (max-width:1180px){
   .app{grid-template-columns:1fr;height:auto}
   .viewport{min-height:56vw}
-  .styles{grid-template-columns:repeat(4,minmax(0,1fr))}
+  .styles{grid-template-columns:repeat(6,minmax(0,1fr))}
   .panel{overflow:visible}
 }
 </style>
@@ -150,7 +169,7 @@ input[type=color]::-webkit-color-swatch{border:0}
     <section>
       <h2><b>01</b> TEXT</h2>
       <textarea id="text" spellcheck="false"></textarea>
-      <p class="hint">Prázdny riadok = <b>nový klip</b> · Enter = zalomenie<br><code>*SLOVO*</code> = zvýraznené slovo (štýl 02)</p>
+      <p class="hint">Prázdny riadok = <b>nový klip</b> · Enter = zalomenie<br><code>*SLOVO*</code> = zvýraznené slovo (štýl 02, 21)<br><code>[01:23.45]</code> na začiatku klipu = čas v skladbe</p>
       <label class="check"><input type="checkbox" id="upper"><span class="lbl">Veľké písmená</span></label>
       <div class="clips"><div class="lbl" id="clipsLbl" style="margin-bottom:7px">Klipy</div><div class="chips" id="clips"></div></div>
     </section>
@@ -185,13 +204,44 @@ input[type=color]::-webkit-color-swatch{border:0}
       <div class="beat" id="beatDot" title="Doba podľa BPM"></div>
       <div class="time" id="time">0.00 / 4.00 s</div>
     </div>
+    <div class="tapbar" id="tapbar">
+      <span>Ťukanie</span><b id="tapInfo"></b><span class="sp" style="flex:1"></span>
+      <span>Enter = začiatok klipu · Backspace = späť · Esc = koniec</span>
+      <button class="btn" id="tapEnd">Hotovo</button>
+    </div>
+    <div class="timeline" id="tlWrap" hidden title="Klik = posun prehrávania · ťahaj značku = zmena času klipu (Shift = posunie aj všetky ďalšie) · koliesko = zoom · dvojklik = celá skladba"><canvas id="timeline"></canvas></div>
+    <div class="stylebar">
+      <span class="lbl">Štýl</span>
+      <label class="check" title="Každý klip dostane iný štýl"><input type="checkbox" id="auto"><span class="lbl" style="color:#fff">Auto režim</span></label>
+      <select id="autoSet"><option value="all">Všetky štýly</option><option value="calm">Pokojné</option><option value="energy">Energické</option></select>
+      <button class="btn" id="autoShuffle" title="Iné náhodné poradie štýlov">Zamiešať</button>
+      <span class="sp"></span>
+      <span class="sub" id="styleNote" style="margin:0"></span>
+    </div>
     <div class="styles" id="styles"></div>
   </section>
 
   <!-- PRAVÝ PANEL -->
   <aside class="panel">
     <section>
-      <h2><b>03</b> ČAS</h2>
+      <h2><b>03</b> SKLADBA</h2>
+      <div class="seg" id="mode"><button data-v="clips">Klipy</button><button data-v="song">Skladba</button></div>
+      <div class="field"><div class="row"><button class="btn full" id="songLoad">Nahrať skladbu…</button><button class="btn" id="songDel" title="Odstrániť skladbu">✕</button></div>
+        <input type="file" id="songFile" accept="audio/*,.mp3,.wav,.m4a,.aac,.ogg,.flac,.opus" hidden></div>
+      <p class="sub" id="songInfo">Žiadna skladba — nahraj MP3/WAV a text sa načasuje do hudby.</p>
+      <div class="field"><div class="lbl">Časovanie textu</div>
+        <div class="grid2"><button class="btn" id="autoTime" title="Rozloží klipy rovnomerne po hudbe, zarovnané na doby">Automaticky</button><button class="btn" id="tapTime" title="Prehrá skladbu, Enterom označ začiatok každého klipu">Ťukať ⏎</button></div>
+        <div class="grid2" style="margin-top:6px"><button class="btn" id="lrcLoad">Import LRC/SRT</button><button class="btn" id="clearTime">Zmazať časy</button></div>
+        <input type="file" id="lrcFile" accept=".lrc,.srt,.vtt,.txt" hidden></div>
+      <div class="grid2">
+        <div class="field"><div class="lbl">Predstih (s)</div><input type="number" id="lead" min="0" max="3" step="0.05" title="O koľko skôr začne animácia pred časom klipu"></div>
+        <div class="field"><div class="lbl">Max. klip (s)</div><input type="number" id="songMax" min="1" max="120" step="0.5" title="Najdlhší čas, čo text ostane na obraze (pri dlhých pauzách zmizne)"></div>
+      </div>
+      <label class="check"><input type="checkbox" id="withAudio"><span class="lbl">Zvuk do videa</span></label>
+      <p class="hint" id="songHint">Čas sa zapíše do textu ako <code>[01:23.45]</code>. Klip iba s časom = pauza. Značky na časovej osi sa dajú ťahať myšou.</p>
+    </section>
+    <section id="timeSec">
+      <h2><b>04</b> ČAS</h2>
       <div class="grid2">
         <div class="field" style="margin-top:0"><div class="lbl">Dĺžka (s)</div><input type="number" id="duration" min="0.5" max="600" step="0.1"></div>
         <div class="field" style="margin-top:0"><div class="lbl">BPM</div><div class="row"><input type="number" id="bpm" min="40" max="240" step="1"><button class="btn" id="tap" title="Ťukaj do rytmu">TAP</button></div></div>
@@ -200,22 +250,23 @@ input[type=color]::-webkit-color-swatch{border:0}
       </div>
       <div class="field"><div class="lbl"><span>Dĺžka podľa dôb</span><output id="beatsOut"></output></div>
         <div class="chips" id="beatChips"></div></div>
-      <p class="hint">BPM riadi krokové štýly (03, 05, 07, 12, 15, 16), pulz a rytmus glitchov. Nábeh/odchod 0 = klip na slučku.</p>
+      <p class="hint">BPM riadi krokové štýly, pulz a rytmus efektov (pri skladbe sa zistí automaticky). Nábeh/odchod 0 = klip na slučku. V režime Skladba určujú dĺžku klipov časy v texte.</p>
     </section>
     <section>
-      <h2><b>04</b> VÝSTUP</h2>
+      <h2><b>05</b> VÝSTUP</h2>
       <div class="field" style="margin-top:0"><div class="lbl">Rozlíšenie (šírka × výška)</div>
         <div class="res"><input type="number" id="resW" min="64" max="8192" step="2"><span>×</span><input type="number" id="resH" min="64" max="8192" step="2"></div></div>
       <div class="chips" id="resChips" style="margin-top:8px"></div>
       <div class="grid2">
         <div class="field"><div class="lbl">FPS</div><select id="fps"><option>24</option><option>25</option><option>30</option><option>50</option><option>60</option></select></div>
-        <div class="field"><div class="lbl">Kvalita</div><select id="quality"><option value="std">Štandard</option><option value="high">Vysoká</option><option value="max">Maximálna</option></select></div>
+        <div class="field"><div class="lbl">Kvalita</div><select id="quality"><option value="std">Štandard</option><option value="high">Vysoká</option><option value="max">Maximálna</option><option value="ultra">Ultra (master)</option></select></div>
       </div>
+      <label class="check" title="Každá snímka sa vykreslí v 2× rozlíšení a zmenší – hladšie hrany, tenké čiary a žiara. Export je pomalší."><input type="checkbox" id="ssaa"><span class="lbl">Vyhladzovanie 2× (SSAA)</span></label>
       <p class="sub" id="estimate"></p>
     </section>
     <section>
-      <h2><b>05</b> EXPORT</h2>
-      <div class="seg" id="scope"><button data-v="current">Aktuálny klip</button><button data-v="all">Všetky klipy</button></div>
+      <h2><b>06</b> EXPORT</h2>
+      <div class="seg" id="scope"><button data-v="current">Aktuálny klip</button><button data-v="all">Všetky klipy</button><button data-v="song">Celá skladba</button></div>
       <div class="field"><div class="lbl">Ukladať do</div><button class="btn full" id="pickDir" style="text-align:left;text-transform:none;letter-spacing:.04em;font-weight:500">Stiahnuté súbory (predvolené)</button></div>
       <div class="field"><button class="btn primary" id="exportBtn">EXPORTOVAŤ MP4</button></div>
       <div class="grid2" style="margin-top:8px">
@@ -2153,6 +2204,14 @@ const E = {
   ioc: x => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2),
   oe: x => (x >= 1 ? 1 : 1 - Math.pow(2, -10 * x)),
   ie: x => (x <= 0 ? 0 : Math.pow(2, 10 * x - 10)),
+  ob: x => 1 + 2.70158 * Math.pow(x - 1, 3) + 1.70158 * Math.pow(x - 1, 2), // out-back (mierny prekmit)
+  obn: x => { // out-bounce
+    const n = 7.5625, d = 2.75;
+    if (x < 1 / d) return n * x * x;
+    if (x < 2 / d) return n * (x -= 1.5 / d) * x + 0.75;
+    if (x < 2.5 / d) return n * (x -= 2.25 / d) * x + 0.9375;
+    return n * (x -= 2.625 / d) * x + 0.984375;
+  },
 };
 function hexRGB(h) {
   h = String(h || '#ffffff').replace('#', '');
@@ -2171,14 +2230,45 @@ function rnd(a, b = 0) {
 }
 function zoom(c, cx, cy, s) { c.translate(cx, cy); c.scale(s, s); c.translate(-cx, -cy); }
 
-/* ---------- text: klipy, riadky, slová, *zvýraznenie* ---------- */
+/* ---------- text: klipy, riadky, slová, *zvýraznenie*, [mm:ss.cc] časy ---------- */
+// Prázdny riadok = nový klip. Riadok začínajúci časom [mm:ss.cc] začína nový klip aj bez
+// prázdneho riadka (takto sa dá rovno vložiť LRC). Klip iba s časom = pauza (nič sa nezobrazí).
+const TAG_RE = /^[ \t]*\[(\d{1,3}):(\d{1,2}(?:[.,]\d{1,3})?)\][ \t]*/;
+const META_RE = /^[ \t]*\[[a-z#]+:[^\]]*\][ \t]*$/i; // LRC hlavička [ar:...], [ti:...]
 function getSlides(raw) {
-  const res = [], re = /\n[ \t]*(?:\n[ \t]*)+/g;
-  let last = 0, m;
-  const push = (s, start) => { if (s.trim()) res.push({ text: s, start, end: start + s.length }); };
-  while ((m = re.exec(raw))) { push(raw.slice(last, m.index), last); last = m.index + m[0].length; }
-  push(raw.slice(last), last);
+  const res = [];
+  let blk = null, pos = 0;
+  const flush = () => {
+    if (blk) {
+      const m = TAG_RE.exec(blk.raw);
+      let time = null, text = blk.raw;
+      if (m) { time = +m[1] * 60 + parseFloat(m[2].replace(',', '.')); text = blk.raw.slice(m[0].length); }
+      if (time != null || text.trim()) res.push({ text, raw: blk.raw, time, gap: time != null && !text.trim(), start: blk.start, end: blk.end });
+    }
+    blk = null;
+  };
+  for (const line of String(raw || '').replace(/\r/g, '').split('\n')) {
+    const ls = pos; pos += line.length + 1;
+    if (!line.trim() || META_RE.test(line)) { flush(); continue; }
+    if (blk && TAG_RE.test(line)) flush();
+    if (!blk) blk = { start: ls, raw: line }; else blk.raw += '\n' + line;
+    blk.end = ls + line.length;
+  }
+  flush();
   return res;
+}
+function fmtTag(t) {
+  t = Math.max(0, Math.round(t * 100) / 100);
+  const m = Math.floor(t / 60), s = t - m * 60;
+  return `[${String(m).padStart(2, '0')}:${s.toFixed(2).padStart(5, '0')}]`;
+}
+// zostaví text späť z klipov (s aktuálnymi časmi)
+function joinSlides(slides) {
+  return slides.map(s => {
+    const body = s.text.replace(/^[ \t]+/, '');
+    if (s.time == null) return body;
+    return fmtTag(s.time) + (body && body[0] !== '\n' ? ' ' : '') + body;
+  }).join('\n\n');
 }
 function parseSlide(raw, upper) {
   let s = String(raw || '').replace(/\r/g, '').trim();
@@ -2348,8 +2438,33 @@ function getScratch(W, H) {
   return cv;
 }
 
+// jednotlivé písmená (pozície v rámci slov) – pre efekty po písmenách
+function glyphs(R) {
+  if (R._g) return R._g;
+  const c = R.ctx, L = R.L, out = [];
+  c.save(); setFont(c, R.S, L.px);
+  L.words.forEach((w, wi) => {
+    const chars = Array.from(w.t);
+    let acc = '', x0 = 0;
+    chars.forEach(ch => {
+      acc += ch;
+      const x1 = c.measureText(acc).width, cw = Math.max(0, x1 - x0 - L.ls);
+      out.push({ t: ch, x: w.x + x0, w: cw, cx: w.x + x0 + cw / 2, yc: w.yc, base: w.base, wi, line: w.line });
+      x0 = x1;
+    });
+  });
+  c.restore();
+  return (R._g = out);
+}
+// fáza doby (0..1) a pulz, ktorý na začiatku každej doby vyskočí a doznie
+function beatPulse(R, sharp = 7) {
+  const hb = R.t - R.tin;
+  if (hb <= 0) return 0;
+  return Math.exp(-((hb % R.beat) / R.beat) * sharp);
+}
+
 /* =====================================================================
-   16 ŠTÝLOV
+   ŠTÝLY (01–16 podľa predlohy, 17–26 nové)
    ===================================================================== */
 const STYLES = [
   { key: 'clean', name: 'CLEAN', draw(R) {
@@ -2675,7 +2790,213 @@ const STYLES = [
       paint(R, [w], { alpha: p * R.vout * lerp(R.dimA, 1, b), glow: b, dy: (1 - p) * 0.2 * L.px });
     });
   } },
+
+  /* ---------- 17–26 ---------- */
+  { key: 'typewriter', name: 'TYPEWRITER', draw(R) {
+    const G = glyphs(R), n = G.length, L = R.L;
+    if (!n) return;
+    const span = clamp(n * 0.055, Math.max(0.15, R.tin), Math.max(0.2, (R.D - R.tout) * 0.7));
+    const shown = (R.t / span) * n;
+    G.forEach((g, i) => {
+      const p = clamp((shown - i) * 2.5);
+      if (p > 0) paint(R, [g], { alpha: p * R.vout, glow: 1, dy: (1 - p) * 0.04 * L.px });
+    });
+    const k = clamp(Math.floor(shown), 0, n), g = k > 0 ? G[k - 1] : G[0];
+    const x = k > 0 ? g.x + g.w + 0.09 * L.px : g.x - 0.12 * L.px;
+    const typing = shown < n;
+    const blink = typing || ((R.t - span) % R.beat) / R.beat < 0.5;
+    if (blink) {
+      const h = L.capH * 1.12, yb = g.base + L.capH * 0.08;
+      strokePath(R, (c, ox, oy) => { c.moveTo(x + ox, yb - h + oy); c.lineTo(x + ox, yb + oy); },
+        { lw: Math.max(1.5, 0.075 * L.px), alpha: R.vout * (typing ? 0.9 : 0.75), glow: 0.8 });
+    }
+  } },
+
+  { key: 'reveal', name: 'BLUR REVEAL', draw(R) {
+    const G = glyphs(R), n = G.length, L = R.L, c = R.ctx;
+    const ti = Math.max(R.tin, 0.35), to = Math.max(R.tout, 0.001);
+    const rank = G.map((_, i) => i).sort((a, b) => rnd(a, 17) - rnd(b, 17));
+    const ord = new Array(n); rank.forEach((gi, r) => { ord[gi] = n > 1 ? r / (n - 1) : 0; });
+    G.forEach((g, i) => {
+      const p = E.oc(prog(R.t, ord[i] * ti * 0.55, ti * 0.45));
+      const q = R.tout > 0 ? E.ic(prog(R.t, R.D - to + (1 - ord[i]) * to * 0.5, to * 0.5)) : 0;
+      const a = p * (1 - q);
+      if (a <= 0.004) return;
+      c.save();
+      zoom(c, g.cx, g.yc, 1 + (1 - p) * 0.55 + q * 0.35);
+      paint(R, [g], { alpha: a, blur: ((1 - p) * 0.22 + q * 0.18) * L.px, glow: p * (1 - q), dy: -(1 - p) * 0.08 * L.px });
+      c.restore();
+    });
+  } },
+
+  { key: 'wave', name: 'WAVE', draw(R) {
+    const G = glyphs(R), n = G.length, L = R.L;
+    const amp = 0.07 * L.px * (0.6 + 0.4 * beatPulse(R, 4));
+    G.forEach((g, i) => {
+      const p = E.oc(stagIn(R, i, n, 0.6)), q = E.ic(stagOut(R, i, n, 0.6));
+      const a = p * (1 - q);
+      if (a <= 0.004) return;
+      const wv = Math.sin((TAU * R.t) / (2 * R.beat) - i * 0.5) * amp;
+      paint(R, [g], { alpha: a, dy: (1 - p) * 0.7 * L.px + q * 0.5 * L.px + wv, glow: 0.4 + 0.6 * p });
+    });
+  } },
+
+  { key: 'neon', name: 'NEON', draw(R) {
+    const G = glyphs(R), n = G.length, L = R.L;
+    const ti = Math.max(R.tin, 0.3), fr = Math.floor(R.t * 22), bar = Math.floor(R.t / (4 * R.beat));
+    const lw = Math.max(1.2, 0.03 * L.px);
+    // vypnutá trubica – slabý obrys
+    paint(R, G, { mode: 'stroke', lw, alpha: 0.13 * R.vis, glow: 0 });
+    G.forEach((g, i) => {
+      const thr = clamp(R.t / ti * 1.15 - rnd(i, 23) * 0.6);
+      let on = rnd(fr, i * 7 + 1) < thr ? 1 : 0;
+      if (R.t >= ti) on = 1;
+      // občasné bliknutie počas taktu
+      const fl = Math.floor(rnd(bar, 41) * n);
+      if (R.t > ti && i === fl && ((R.t / (4 * R.beat)) % 1) < 0.06 && rnd(fr, 3) < 0.6) on = 0.25;
+      if (R.tout > 0 && R.t > R.D - R.tout) on *= rnd(fr, i * 3 + 9) < 1 - R.pout ? 1 : 0.15;
+      if (on <= 0) return;
+      paint(R, [g], { mode: 'stroke', lw, alpha: on * R.vout, glow: 1.5 * on });
+      paint(R, [g], { alpha: on * 0.22 * R.vout, glow: 0 });
+    });
+  } },
+
+  { key: 'karaoke', name: 'KARAOKE', draw(R) {
+    const L = R.L, c = R.ctx, ws = L.words;
+    const a0 = R.vis, dy = (1 - R.vin) * 0.15 * L.px;
+    const fillRGB = R.acc.join() === R.rgb.join() ? R.rgb : R.acc;
+    paint(R, ws, { alpha: a0 * Math.max(R.dimA, 0.12), glow: 0, dy });
+    const t0 = R.tin * 0.6, t1 = Math.max(t0 + 0.2, R.D - R.tout - 0.15);
+    const tot = ws.reduce((s, w) => s + w.t.length + 1, 0);
+    let pos = prog(R.t, t0, t1 - t0) * tot;
+    for (const w of ws) {
+      const len = w.t.length + 1, f = clamp(pos / len);
+      pos -= len;
+      if (f <= 0) break;
+      c.save();
+      if (f < 1) { c.beginPath(); c.rect(w.x - L.px, w.yc - 2 * L.px, L.px + w.w * f, 4 * L.px); c.clip(); }
+      paint(R, [w], { alpha: a0, glow: 1, dy, rgb: fillRGB });
+      c.restore();
+    }
+  } },
+
+  { key: 'bounce', name: 'BOUNCE', draw(R) {
+    const L = R.L, ws = L.words, n = ws.length, c = R.ctx;
+    const ti = Math.max(R.tin, 0.4), pulse = beatPulse(R, 8);
+    ws.forEach((w, i) => {
+      const s0 = n > 1 ? (i / (n - 1)) * ti * 0.5 : 0;
+      const p = prog(R.t, s0, ti * 0.5 + 0.25);
+      if (p <= 0) return;
+      const b = E.obn(p), q = R.tout > 0 ? E.ic(prog(R.t, R.D - R.tout + (i / Math.max(1, n)) * R.tout * 0.4, R.tout * 0.6)) : 0;
+      const land = p > 0.36 && p < 0.6 ? Math.sin(((p - 0.36) / 0.24) * Math.PI) : 0;
+      c.save();
+      c.translate(w.cx, w.base); c.scale(1 + land * 0.06, 1 - land * 0.1 + pulse * 0.05 * (1 - q)); c.translate(-w.cx, -w.base);
+      paint(R, [w], { alpha: clamp(p * 4) * (1 - q), dy: -(1 - b) * 1.4 * L.px + q * q * 1.6 * L.px });
+      c.restore();
+    });
+  } },
+
+  { key: 'zoom', name: 'ZOOM THROUGH', draw(R) {
+    const L = R.L, c = R.ctx, ti = Math.max(R.tin, 0.2);
+    const sc = t => {
+      const p = E.oe(prog(t, 0, ti)), q = R.tout > 0 ? E.ie(prog(t, R.D - R.tout, R.tout)) : 0;
+      return { s: lerp(0.15, 1, p) * lerp(1, 5, q), a: clamp(prog(t, 0, ti * 0.3)) * (1 - E.ic(clamp(q * 1.3))), p, q };
+    };
+    const cur = sc(R.t);
+    for (let j = 6; j >= 1; j--) {
+      const g = sc(R.t - j * 0.025);
+      if (Math.abs(g.s - cur.s) < 0.004) continue;
+      c.save(); zoom(c, L.cx, L.cy, g.s);
+      paint(R, L.words, { alpha: g.a * 0.16 * (1 - j / 7), glow: 0 });
+      c.restore();
+    }
+    const hb = beatPulse(R, 9) * (1 - cur.q);
+    c.save(); zoom(c, L.cx, L.cy, cur.s * (1 + 0.02 * hb));
+    paint(R, L.words, { alpha: cur.a, blur: ((1 - cur.p) * 0.15 + cur.q * 0.2) * L.px });
+    c.restore();
+  } },
+
+  { key: 'echo', name: 'ECHO', draw(R) {
+    const L = R.L, c = R.ctx, p = E.oc(R.pin);
+    // prílet troch kópií do stredu
+    if (R.pin < 1) for (const k of [1.6, 1.3]) {
+      c.save(); zoom(c, L.cx, L.cy, lerp(k, 1, p));
+      paint(R, L.words, { mode: 'stroke', alpha: (1 - p) * 0.5, glow: 0.3 });
+      c.restore();
+    }
+    // na každú dobu sa z textu odlepí obrys a rozpína sa
+    const hb = R.t - R.tin;
+    if (hb > 0) for (let k = 0; k < 3; k++) {
+      const age = (hb % R.beat) + k * R.beat;
+      if (age > hb) break;
+      const f = age / (1.6 * R.beat);
+      if (f >= 1) continue;
+      c.save(); zoom(c, L.cx, L.cy, 1 + E.oc(f) * 0.32);
+      paint(R, L.words, { mode: 'stroke', alpha: (1 - f) * 0.55 * R.vout, glow: 0.4 * (1 - f) });
+      c.restore();
+    }
+    c.save(); zoom(c, L.cx, L.cy, lerp(0.92, 1, p) * (1 + 0.015 * beatPulse(R, 8)));
+    paint(R, L.words, { alpha: p * R.vout, blur: E.ic(R.pout) * 0.1 * L.px });
+    c.restore();
+  } },
+
+  { key: 'flip', name: 'FLIP 3D', draw(R) {
+    const G = glyphs(R), n = G.length, c = R.ctx;
+    G.forEach((g, i) => {
+      const p = stagIn(R, i, n, 0.65), q = stagOut(R, i, n, 0.65);
+      if (p <= 0) return;
+      const ang = (1 - E.ob(p)) * (Math.PI / 2) + E.ic(q) * (Math.PI / 2);
+      const k = Math.cos(ang);
+      if (Math.abs(k) < 0.03 || q >= 1) return;
+      c.save();
+      c.translate(g.cx, g.yc); c.scale(1, k); c.translate(-g.cx, -g.yc);
+      paint(R, [g], { alpha: clamp(p * 3) * (0.35 + 0.65 * Math.abs(k)) * (1 - E.ic(q) * 0.3), glow: Math.abs(k) });
+      c.restore();
+    });
+  } },
+
+  { key: 'rgb', name: 'RGB SPLIT', draw(R) {
+    const L = R.L, c = R.ctx, p = E.oe(R.pin), q = E.ic(R.pout);
+    const off = ((1 - p) * 0.3 + q * 0.3 + beatPulse(R, 10) * 0.06 * (1 - q)) * L.px;
+    const fs = Math.floor(R.t * 30), shake = (1 - p) * 0.08 * L.px;
+    const sx = (rnd(fs, 1) - 0.5) * shake, sy = (rnd(fs, 2) - 0.5) * shake;
+    const a = clamp(R.pin * 2.5) * (1 - q);
+    const [r, g, b] = R.rgb;
+    c.save();
+    c.globalCompositeOperation = 'lighter';
+    zoom(c, L.cx, L.cy, lerp(1.25, 1, p) * lerp(1, 1.1, q));
+    paint(R, L.words, { rgb: [r, 0, 0], dx: sx - off, dy: sy, alpha: a, glow: 0.7 });
+    paint(R, L.words, { rgb: [0, g, 0], dx: sx, dy: sy + off * 0.15, alpha: a, glow: 0.7 });
+    paint(R, L.words, { rgb: [0, 0, b], dx: sx + off, dy: sy, alpha: a, glow: 0.7 });
+    c.restore();
+  } },
 ];
+
+/* ---------- AUTO režim: iný štýl pre každý klip (deterministicky) ---------- */
+const AUTO_SETS = {
+  all: ['clean', 'fade', 'outline', 'wordbyword', 'slide', 'stack', 'lines', 'scale', 'split', 'frame', 'chain', 'glitch', 'circle',
+    'fadewords', 'bar', 'typewriter', 'reveal', 'wave', 'neon', 'karaoke', 'bounce', 'zoom', 'echo', 'flip', 'rgb'],
+  calm: ['clean', 'fade', 'lines', 'frame', 'circle', 'fadewords', 'typewriter', 'reveal', 'karaoke', 'flip'],
+  energy: ['outline', 'slide', 'stack', 'scale', 'split', 'chain', 'glitch', 'wordbyword', 'bar', 'wave', 'neon', 'bounce', 'zoom', 'echo', 'rgb'],
+};
+function autoStyles(texts, S) {
+  const keys = AUTO_SETS[S.autoSet] || AUTO_SETS.all;
+  const set = keys.map(k => STYLES.findIndex(s => s.key === k)).filter(i => i >= 0);
+  const hi = STYLES.findIndex(s => s.key === 'highlight');
+  const seed = (S.autoSeed | 0) * 7919 + 13, out = [];
+  let prev = -1, prev2 = -1;
+  texts.forEach((tx, i) => {
+    let k;
+    if (/\*/.test(tx) && rnd(i, seed + 5) < 0.75) k = hi;
+    else {
+      let j = Math.floor(rnd(i, seed) * set.length);
+      for (let tries = 0; tries < set.length && (set[j] === prev || set[j] === prev2); tries++) j = (j + 1) % set.length;
+      k = set[j];
+    }
+    out.push(k); prev2 = prev; prev = k;
+  });
+  return out;
+}
 
 /* ---------- jedna snímka ---------- */
 function renderFrame(ctx, W, H, t, S, raw, styleIdx, Doverride) {
@@ -2703,10 +3024,164 @@ function renderFrame(ctx, W, H, t, S, raw, styleIdx, Doverride) {
   ctx.save(); st.draw(R); ctx.restore();
 }
 
+/* ---------- skladba: klipy na časovej osi ---------- */
+// clips: [{ text, s, e, style }] zoradené podľa času, bez prekryvu
+function clipAt(clips, T) {
+  for (let k = 0; k < clips.length; k++) if (T >= clips[k].s && T < clips[k].e) return k;
+  return -1;
+}
+function renderSongFrame(ctx, W, H, T, S, clips) {
+  const k = clipAt(clips, T);
+  if (k < 0) { renderFrame(ctx, W, H, 0, S, '', 0); return -1; }
+  const c = clips[k];
+  renderFrame(ctx, W, H, T - c.s, S, c.text, c.style, c.e - c.s);
+  return k;
+}
+
 </script>
 <script>
 /* =====================================================================
-   LYRICS GENERATOR — UI, náhľad, export MP4
+   LYRICS GENERATOR — analýza skladby (BPM, fáza dôb, priebeh, začiatok/koniec)
+   Všetko lokálne v prehliadači, bez knižníc.
+   ===================================================================== */
+'use strict';
+
+// Načíta súbor do AudioBuffer (48 kHz – rovnaká frekvencia pre prehrávanie aj export).
+async function decodeSong(arrayBuf) {
+  const oc = new OfflineAudioContext(2, 1, 48000);
+  return await oc.decodeAudioData(arrayBuf);
+}
+
+function analyzeSong(buf) {
+  const sr = buf.sampleRate, len = buf.length, nch = buf.numberOfChannels;
+  const ch = [];
+  for (let c = 0; c < nch; c++) ch.push(buf.getChannelData(c));
+  const mono = i => { let s = 0; for (let c = 0; c < nch; c++) s += ch[c][i]; return s / nch; };
+
+  // 1) priebeh pre časovú os (max. amplitúda v 4000 úsekoch)
+  const NP = 4000, peaks = new Float32Array(NP);
+  for (let b = 0; b < NP; b++) {
+    const i0 = Math.floor((b * len) / NP), i1 = Math.floor(((b + 1) * len) / NP);
+    let m = 0;
+    for (let i = i0; i < i1; i += 4) { const v = Math.abs(mono(i)); if (v > m) m = v; }
+    peaks[b] = m;
+  }
+
+  // 2) energia po krátkych oknách → "nástupy" (rast hlasitosti)
+  const hop = 512, fr = sr / hop, N = Math.floor(len / hop);
+  const le = new Float32Array(N);
+  for (let n = 0; n < N; n++) {
+    let e = 0;
+    const i0 = n * hop, i1 = Math.min(len, i0 + 1024);
+    for (let i = i0; i < i1; i += 2) { const v = mono(i); e += v * v; }
+    le[n] = Math.log(1e-7 + e);
+  }
+  const on = new Float32Array(N);
+  for (let n = 1; n < N; n++) on[n] = Math.max(0, le[n] - le[n - 1]);
+  // odčítať lokálny priemer (zvýrazní údery, potlačí pozvoľné zmeny)
+  const W = 12, pre = new Float64Array(N + 1);
+  for (let n = 0; n < N; n++) pre[n + 1] = pre[n] + on[n];
+  const loc = new Float32Array(N);
+  for (let n = 0; n < N; n++) {
+    const a = Math.max(0, n - W), b = Math.min(N, n + W + 1);
+    loc[n] = (pre[b] - pre[a]) / (b - a);
+  }
+  for (let n = 0; n < N; n++) on[n] = Math.max(0, on[n] - loc[n]);
+
+  // 3) tempo: autokorelácia nástupov pre 70–180 BPM, mierna preferencia okolo 120
+  const at = (x) => { const i = Math.floor(x), f = x - i; return i + 1 < N ? on[i] * (1 - f) + on[i + 1] * f : 0; };
+  const score = bpm => {
+    const lag = (fr * 60) / bpm;
+    let s = 0;
+    for (let n = 0; n + 2 * lag < N; n += 1) s += on[n] * (at(n + lag) + 0.5 * at(n + 2 * lag));
+    return s;
+  };
+  let best = 120, bestS = -1;
+  for (let bpm = 70; bpm <= 180; bpm += 0.5) {
+    const w = Math.exp(-0.5 * Math.pow(Math.log2(bpm / 120) / 0.8, 2));
+    const s = score(bpm) * w;
+    if (s > bestS) { bestS = s; best = bpm; }
+  }
+  // spresnenie
+  for (let bpm = best - 0.5; bpm <= best + 0.5; bpm += 0.05) {
+    const w = Math.exp(-0.5 * Math.pow(Math.log2(bpm / 120) / 0.8, 2));
+    const s = score(bpm) * w;
+    if (s > bestS) { bestS = s; best = bpm; }
+  }
+
+  // 4) fáza: posun mriežky dôb, pri ktorom padá najviac nástupov na dobu
+  const P = (fr * 60) / best;
+  let phase = 0, phS = -1;
+  for (let ph = 0; ph < P; ph += 0.5) {
+    let s = 0;
+    for (let x = ph; x < N; x += P) s += at(x) + 0.5 * (at(x - 1) + at(x + 1));
+    if (s > phS) { phS = s; phase = ph; }
+  }
+
+  // 5) začiatok a koniec hudby (hlasitosť v 0,1 s oknách)
+  const ew = Math.floor(sr * 0.1), NE = Math.floor(len / ew), env = new Float32Array(NE);
+  for (let k = 0; k < NE; k++) {
+    let e = 0;
+    for (let i = k * ew; i < (k + 1) * ew; i += 8) { const v = mono(i); e += v * v; }
+    env[k] = Math.sqrt(e / (ew / 8));
+  }
+  const sorted = Array.from(env).sort((a, b) => a - b);
+  const thr = 0.2 * (sorted[Math.floor(sorted.length * 0.9)] || 0);
+  let a = 0, b = NE - 1;
+  while (a < NE && env[a] <= thr) a++;
+  while (b > a && env[b] <= thr) b--;
+
+  return {
+    duration: len / sr, peaks, bpm: Math.round(best * 10) / 10,
+    // +dĺžka okna: nástup sa v energii prejaví už keď okno začne prekrývať úder
+    phase: (phase / fr + 1024 / sr) % (60 / best), start: a * 0.1, end: Math.min(len / sr, (b + 1) * 0.1),
+  };
+}
+
+/* ---------- import LRC / SRT → text s časmi ---------- */
+function parseTimedLyrics(src) {
+  src = String(src || '').replace(/^﻿/, '').replace(/\r/g, '');
+  const items = [];
+  if (/-->/.test(src)) {
+    // SRT (aj WebVTT)
+    const ts = s => { const m = /(?:(\d+):)?(\d+):(\d+)[,.](\d+)/.exec(s); return m ? (+(m[1] || 0)) * 3600 + +m[2] * 60 + +m[3] + +('0.' + m[4]) : null; };
+    for (const blk of src.split(/\n\s*\n/)) {
+      const lines = blk.split('\n').map(l => l.trim()).filter(Boolean);
+      const k = lines.findIndex(l => /-->/.test(l));
+      if (k < 0) continue;
+      const [a, b] = lines[k].split('-->');
+      const s = ts(a), e = ts(b);
+      const text = lines.slice(k + 1).join('\n').replace(/<[^>]+>/g, '').trim();
+      if (s != null && text) items.push({ s, e, text });
+    }
+  } else {
+    // LRC – riadok môže mať viac časov (opakovaný refrén)
+    const re = /\[(\d{1,3}):(\d{1,2}(?:[.,]\d{1,3})?)\]/g;
+    for (const line of src.split('\n')) {
+      const times = [];
+      let m, last = 0;
+      re.lastIndex = 0;
+      while ((m = re.exec(line)) && m.index === last) { times.push(+m[1] * 60 + parseFloat(m[2].replace(',', '.'))); last = re.lastIndex; }
+      if (!times.length) continue;
+      const text = line.slice(last).replace(/<\d+:\d+(?:[.,]\d+)?>/g, '').trim(); // odstrániť časy slov (enhanced LRC)
+      for (const s of times) items.push({ s, e: null, text });
+    }
+  }
+  items.sort((x, y) => x.s - y.s);
+  // výstup: klip na každý riadok; pauza, keď SRT titulok skončí skôr než ďalší
+  const out = [];
+  items.forEach((it, i) => {
+    out.push({ time: it.s, text: it.text, gap: !it.text });
+    const nx = items[i + 1];
+    if (it.e != null && (!nx || nx.s - it.e > 1)) out.push({ time: it.e, text: '', gap: true });
+  });
+  return out;
+}
+
+</script>
+<script>
+/* =====================================================================
+   LYRICS GENERATOR — UI, náhľad, skladba, export MP4
    ===================================================================== */
 'use strict';
 (function () {
@@ -2719,20 +3194,28 @@ function renderFrame(ctx, W, H, t, S, raw, styleIdx, Doverride) {
     upper: true, size: 14, tracking: 0, leading: 1.0, safe: 86, posX: 0, posY: 0,
     color: '#ffffff', accent: '#ffffff', glow: 45, dim: 38,
     duration: 4, tin: 0.8, tout: 0.6, bpm: 120,
-    w: 1920, h: 1080, fps: 30, quality: 'high', scope: 'current',
+    w: 1920, h: 1080, fps: 30, quality: 'high', ssaa: true, scope: 'current',
+    mode: 'clips', auto: false, autoSet: 'all', autoSeed: 1, lead: 0.2, songMax: 10, withAudio: true,
   };
   const FONTS = [
     { g: 'Vstavané (fungujú všade)', items: [['Montserrat', 900], ['Inter', 900], ['Poppins', 800], ['Archivo Black', 400], ['Anton', 400], ['Bebas Neue', 400], ['Oswald', 700], ['Barlow Condensed', 800]] },
     { g: 'Systémové (Windows)', items: [['Arial Black', 900], ['Impact', 400], ['Segoe UI', 900], ['Bahnschrift', 700], ['Arial', 700]] },
   ];
   const RES = [[1920, 1080], [3840, 2160], [1280, 720], [2560, 1440], [1080, 1920]];
-  const BPP = { std: 0.08, high: 0.15, max: 0.26 };
+  // bity na pixel a snímku – čierne pozadie sa kóduje lacno, takže reálne súbory sú menšie
+  const BPP = { std: 0.1, high: 0.2, max: 0.35, ultra: 0.6 };
 
   let S = Object.assign({}, DEF);
   try { const s = JSON.parse(localStorage.getItem(LS_KEY) || 'null'); if (s) Object.assign(S, s); } catch (e) {}
+  if (!BPP[S.quality]) S.quality = 'high';
   const customFonts = [];
   let slides = [], cur = 0, tNow = 0, playing = true, dirty = true, hover = -1;
   let dirHandle = null, busy = false, cancelFlag = false;
+  let autoList = [], clips = [];
+  let song = null;               // { name, buf, duration, peaks, bpm, phase, start, end }
+  let actx = null, src = null, t0 = 0;
+  let tap = null;                // režim ťukania { idx, hist }
+  let view = { a: 0, b: 1 };     // výrez časovej osi (s)
 
   /* ---------- pomocné ---------- */
   const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -2741,15 +3224,25 @@ function renderFrame(ctx, W, H, t, S, raw, styleIdx, Doverride) {
   function save() { clearTimeout(saveT); saveT = setTimeout(() => { try { localStorage.setItem(LS_KEY, JSON.stringify(S)); } catch (e) {} }, 250); }
   function applyFamily() { S.family = S.fontSel === '__other' ? (S.otherFamily.trim() || 'Montserrat') : S.fontSel; }
   function slideText(i = cur) { return slides[i] ? slides[i].text : ''; }
-  function poseTime() { return clamp(S.duration - Math.min(S.tout, S.duration / 2) - 0.03, Math.min(S.tin, S.duration / 2) + 0.01, S.duration); }
-  function bitrate(W, H, fps) { return Math.round(Math.min(160e6, Math.max(2e6, W * H * fps * BPP[S.quality]))); }
+  const songMode = () => S.mode === 'song' && !!song;
+  const styleOf = i => (S.auto && autoList[i] != null ? autoList[i] : S.style);
+  function clipOf(i) { return clips.find(c => c.i === i) || null; }
+  function curD() { const c = songMode() ? clipOf(cur) : null; return c ? c.e - c.s : S.duration; }
+  function poseTime(D = curD()) { return clamp(D - Math.min(S.tout, D / 2) - 0.03, Math.min(S.tin, D / 2) + 0.01, D); }
+  function totalDur() { return songMode() ? song.duration : S.duration; }
+  function bitrate(W, H, fps) { return Math.round(Math.min(240e6, Math.max(2e6, W * H * fps * BPP[S.quality]))); }
   function plural(n, a, b, c) { return n === 1 ? a : n >= 2 && n <= 4 ? b : c; }
+  function fmtT(t, dec = 1) {
+    t = Math.max(0, t);
+    const m = Math.floor(t / 60), s = t - m * 60;
+    return `${m}:${s.toFixed(dec).padStart(dec ? 3 + dec : 2, '0')}`;
+  }
   function slug(s) {
     return s.replace(/\*/g, '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
       .replace(/[^A-Za-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 40).toUpperCase() || 'TEXT';
   }
-  function fileName(SS, sl, idx, W, H, ext) {
-    return `${String(idx + 1).padStart(2, '0')}_${slug(sl[idx].text)}_${STYLES[SS.style].key}_${W}x${H}.${ext}`;
+  function fileName(SS, text, idx, style, W, H, ext) {
+    return `${String(idx + 1).padStart(2, '0')}_${slug(text)}_${STYLES[style].key}_${W}x${H}.${ext}`;
   }
   function status(msg, kind) { const el = $('status'); el.textContent = msg || ''; el.className = 'status' + (kind ? ' ' + kind : ''); }
   function ensureFont() {
@@ -2762,13 +3255,50 @@ function renderFrame(ctx, W, H, t, S, raw, styleIdx, Doverride) {
   function ab2b64(buf) { let s = ''; const b = new Uint8Array(buf); for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000)); return btoa(s); }
   function b642ab(b64) { const s = atob(b64), b = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) b[i] = s.charCodeAt(i); return b.buffer; }
 
+  /* ---------- IndexedDB (skladba sa pamätá aj po zatvorení) ---------- */
+  const idb = {
+    open() {
+      return new Promise((res, rej) => {
+        const r = indexedDB.open('lyricsgen', 1);
+        r.onupgradeneeded = () => r.result.createObjectStore('kv');
+        r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+      });
+    },
+    async run(mode, fn) {
+      const db = await this.open();
+      return new Promise((res, rej) => {
+        const tx = db.transaction('kv', mode), st = tx.objectStore('kv'), rq = fn(st);
+        tx.oncomplete = () => res(rq && rq.result); tx.onerror = () => rej(tx.error);
+      });
+    },
+    get(k) { return this.run('readonly', st => st.get(k)); },
+    put(k, v) { return this.run('readwrite', st => st.put(v, k)); },
+    del(k) { return this.run('readwrite', st => st.delete(k)); },
+  };
+
+  /* ---------- odvodené dáta: auto štýly, klipy na časovej osi ---------- */
+  function recompute() {
+    autoList = autoStyles(slides.map(s => s.text), S);
+    clips = [];
+    if (!song) return;
+    const arr = slides.map((s, i) => ({ i, time: s.time, gap: s.gap, text: s.text }))
+      .filter(x => x.time != null).sort((a, b) => a.time - b.time || a.i - b.i);
+    arr.forEach((a, k) => {
+      if (a.gap) return;
+      const s = a.time - S.lead, nx = arr[k + 1];
+      let e = nx ? nx.time - S.lead : song.duration;
+      e = Math.min(e, a.time + S.songMax, song.duration + 0.001);
+      if (e - s >= 0.15) clips.push({ i: a.i, text: a.text, s, e, style: styleOf(a.i) });
+    });
+  }
+
   /* ---------- zmena nastavení ---------- */
   let thumbT = 0;
   function changed(opts = {}) {
-    applyFamily(); save(); dirty = true;
-    if (!playing) tNow = Math.min(tNow, S.duration);
+    applyFamily(); recompute(); save(); dirty = true;
+    if (!playing && !songMode()) tNow = Math.min(tNow, S.duration);
     clearTimeout(thumbT); thumbT = setTimeout(renderThumbs, opts.now ? 0 : 140);
-    updateInfo();
+    markStyle(); updateInfo();
   }
 
   /* ---------- fonty ---------- */
@@ -2841,25 +3371,41 @@ function renderFrame(ctx, W, H, t, S, raw, styleIdx, Doverride) {
   function refreshSlides() {
     slides = getSlides(S.text);
     if (cur >= slides.length) cur = Math.max(0, slides.length - 1);
+    recompute();
     const host = $('clips'); host.innerHTML = '';
     slides.forEach((s, i) => {
       const b = document.createElement('button');
-      b.className = 'chip' + (i === cur ? ' on' : '');
-      const first = s.text.replace(/\*/g, '').trim().split('\n').map(x => x.trim()).join(' / ');
-      b.innerHTML = `<b>${String(i + 1).padStart(2, '0')}</b>`;
+      b.className = 'chip' + (i === cur ? ' on' : '') + (s.gap ? ' muted' : '');
+      const first = s.gap ? '— pauza —' : s.text.replace(/\*/g, '').trim().split('\n').map(x => x.trim()).join(' / ');
+      b.innerHTML = `<b>${String(i + 1).padStart(2, '0')}</b>` + (s.time != null ? `<span style="opacity:.6;margin-right:6px">${fmtT(s.time, 0)}</span>` : '');
       b.appendChild(document.createTextNode(first.length > 26 ? first.slice(0, 25) + '…' : first));
       b.title = s.text.replace(/\*/g, '');
-      b.onclick = () => { cur = i; tNow = 0; refreshSlides(); changed({ now: true }); };
+      b.onclick = () => {
+        cur = i;
+        if (songMode() && s.time != null) seek(s.time - S.lead);
+        else tNow = 0;
+        markChips(); changed({ now: true });
+      };
       host.appendChild(b);
     });
-    $('clipsLbl').textContent = slides.length ? `${slides.length} ${plural(slides.length, 'klip', 'klipy', 'klipov')}` : 'Žiadny text';
-    $('scope').querySelector('[data-v=all]').textContent = `Všetky (${slides.length})`;
+    const n = slides.filter(s => !s.gap).length, timed = slides.filter(s => !s.gap && s.time != null).length;
+    $('clipsLbl').textContent = n ? `${n} ${plural(n, 'klip', 'klipy', 'klipov')}` + (song ? ` · ${timed} s časom` : '') : 'Žiadny text';
+    $('scope').querySelector('[data-v=all]').textContent = `Všetky (${n})`;
   }
+  function markChips() { [...$('clips').children].forEach((b, i) => b.classList.toggle('on', i === cur)); }
   function caretSlide() {
+    if (tap) return;
     const pos = $('text').selectionStart;
     let idx = 0;
     slides.forEach((s, i) => { if (s.start <= pos) idx = i; });
-    if (idx !== cur) { cur = idx; refreshSlides(); changed({ now: true }); }
+    if (idx !== cur) { cur = idx; markChips(); changed({ now: true }); }
+  }
+  // zapíše časy z `slides` späť do textu
+  function writeTimes() {
+    S.text = joinSlides(slides);
+    const ta = $('text'), st = ta.scrollTop;
+    ta.value = S.text; ta.scrollTop = st;
+    refreshSlides(); changed();
   }
 
   /* ---------- náhľad ---------- */
@@ -2872,13 +3418,26 @@ function renderFrame(ctx, W, H, t, S, raw, styleIdx, Doverride) {
     const bw = Math.round(Math.min(S.w, cw * dpr));
     pc.width = bw; pc.height = Math.max(2, Math.round(bw / ar));
     pc.style.width = cw + 'px'; pc.style.height = ch + 'px';
+    fitTimeline();
     dirty = true;
   }
   function drawPreview() {
-    renderFrame(pctx, pc.width, pc.height, tNow, S, slideText(), S.style);
-    $('scrub').value = Math.round((tNow / S.duration) * 1000);
-    $('time').textContent = `${tNow.toFixed(2)} / ${S.duration.toFixed(2)} s`;
-    const beat = 60 / Math.max(20, S.bpm), ph = (tNow % beat) / beat;
+    const D = totalDur();
+    if (songMode()) {
+      const k = renderSongFrame(pctx, pc.width, pc.height, tNow, S, clips);
+      const ci = k >= 0 ? clips[k].i : -1;
+      if (ci >= 0 && ci !== cur) {
+        cur = ci; markChips(); markStyle(); updateInfo();
+        clearTimeout(thumbT); thumbT = setTimeout(renderThumbs, 60);
+      }
+      drawTimeline();
+      $('time').textContent = `${fmtT(tNow)} / ${fmtT(D)}`;
+    } else {
+      renderFrame(pctx, pc.width, pc.height, tNow, S, slideText(), styleOf(cur));
+      $('time').textContent = `${tNow.toFixed(2)} / ${D.toFixed(2)} s`;
+    }
+    $('scrub').value = Math.round((tNow / D) * 1000);
+    const beat = 60 / Math.max(20, S.bpm), ph = (((tNow - (songMode() ? song.phase : 0)) % beat) + beat) % beat / beat;
     $('beatDot').style.opacity = (0.12 + 0.88 * Math.exp(-ph * 6)).toFixed(3);
   }
   function setPlaying(p) {
@@ -2886,14 +3445,268 @@ function renderFrame(ctx, W, H, t, S, raw, styleIdx, Doverride) {
     $('play').innerHTML = p
       ? '<svg viewBox="0 0 12 12"><rect x="1.5" y="1" width="3" height="10"/><rect x="7.5" y="1" width="3" height="10"/></svg>'
       : '<svg viewBox="0 0 12 12"><path d="M2 1l9 5-9 5z"/></svg>';
+    if (songMode()) {
+      if (p) { if (tNow >= song.duration - 0.05) tNow = 0; audioPlay(tNow); }
+      else audioStop();
+    }
+    dirty = true;
+  }
+  function seek(t) {
+    tNow = clamp(t, 0, totalDur());
+    if (playing && songMode()) audioPlay(tNow);
+    dirty = true;
   }
   let last = performance.now();
   function loop(now) {
     const dt = Math.min(0.1, (now - last) / 1000); last = now;
-    if (playing && !busy) { tNow += dt; if (tNow >= S.duration) tNow %= S.duration; dirty = true; }
+    if (playing && !busy) {
+      if (songMode()) {
+        if (actx && src) {
+          tNow = actx.currentTime - t0;
+          if (tNow >= song.duration) { tNow = song.duration; if (tap) endTap(); setPlaying(false); }
+          followPlayhead();
+        }
+      } else { tNow += dt; if (tNow >= S.duration) tNow %= S.duration; }
+      dirty = true;
+    }
     if (dirty) { drawPreview(); dirty = false; }
-    if (hover >= 0 && !busy) drawThumb(hover, (now / 1000) % S.duration);
+    if (hover >= 0 && !busy) { const D = curD(); drawThumb(hover, (now / 1000) % D, D); }
     requestAnimationFrame(loop);
+  }
+
+  /* ---------- zvuk ---------- */
+  function audioPlay(from) {
+    audioStop();
+    if (!song) return;
+    if (!actx) actx = new AudioContext({ sampleRate: 48000 });
+    actx.resume();
+    src = actx.createBufferSource();
+    src.buffer = song.buf; src.connect(actx.destination);
+    const f = clamp(from, 0, song.duration);
+    t0 = actx.currentTime - f;
+    src.start(0, f);
+  }
+  function audioStop() {
+    if (src) { try { src.stop(); } catch (e) {} src.disconnect(); src = null; }
+  }
+
+  /* ---------- skladba ---------- */
+  async function loadSong(file, isNew) {
+    status('Načítavam skladbu…');
+    const buf = await decodeSong(await file.arrayBuffer());
+    await sleep(0);
+    const an = analyzeSong(buf);
+    audioStop();
+    song = Object.assign({ name: (file.name || 'skladba').replace(/\.[^.]+$/, ''), buf }, an);
+    view = { a: 0, b: song.duration };
+    if (isNew) {
+      S.bpm = Math.round(an.bpm); $('bpm').value = S.bpm;
+      try { await idb.put('song', file); } catch (e) { console.warn('Skladbu sa nepodarilo zapamätať:', e); }
+    }
+    S.mode = 'song';
+    refreshSlides();
+    if (isNew && !slides.some(s => s.time != null) && slides.length) autoDistribute(true);
+    setMode('song');
+    status(`Skladba „${song.name}“ · ${fmtT(song.duration, 0)} · zistené tempo ~${an.bpm} BPM.` +
+      (isNew ? ' Text som rozložil automaticky — dolaď ťukaním alebo ťahaním značiek.' : ''), 'ok');
+  }
+  function songInfo() {
+    $('songInfo').textContent = song
+      ? `${song.name} · ${fmtT(song.duration, 0)} · ~${song.bpm} BPM`
+      : 'Žiadna skladba — nahraj MP3/WAV a text sa načasuje do hudby.';
+    ['autoTime', 'tapTime', 'songDel'].forEach(id => { $(id).disabled = !song; });
+    $('mode').querySelector('[data-v=song]').disabled = !song;
+    $('scope').querySelector('[data-v=song]').disabled = !song;
+  }
+  function setMode(m) {
+    if (tap) endTap();
+    audioStop();
+    S.mode = m === 'song' && song ? 'song' : 'clips';
+    document.querySelectorAll('#mode button').forEach(b => b.classList.toggle('on', b.dataset.v === S.mode));
+    $('tlWrap').hidden = !songMode();
+    ['duration', 'beatChips'].forEach(id => $(id).closest('.field').classList.toggle('muted', songMode()));
+    if (songMode()) S.scope = 'song';
+    else if (S.scope === 'song') S.scope = 'current';
+    tNow = 0;
+    setPlaying(!songMode());
+    songInfo(); fitPreview(); changed({ now: true });
+  }
+  // rozloží klipy rovnomerne medzi začiatok a koniec hudby, zarovnané na doby
+  function autoDistribute(silent) {
+    if (!song) return;
+    const list = slides.filter(s => !s.gap);
+    if (!list.length) { status('Najprv napíš text.', 'err'); return; }
+    const beat = 60 / Math.max(20, S.bpm), n = list.length;
+    const a = song.start, b = Math.max(song.start + n * beat, song.end - 2 * beat);
+    const step = (b - a) / n;
+    const snap = t => song.phase + Math.round((t - song.phase) / beat) * beat;
+    list.forEach((s, k) => { s.time = Math.max(0, snap(a + k * step)); });
+    slides = list;
+    writeTimes();
+    if (!silent) status(`Rozložené: ${n} ${plural(n, 'klip', 'klipy', 'klipov')}, ~${step.toFixed(1)} s na klip. Dolaď ťahaním značiek (Shift = posunie aj všetky ďalšie).`, 'ok');
+  }
+
+  /* ---------- ťukanie ---------- */
+  function startTap() {
+    if (!song) return;
+    if (!slides.length) { status('Najprv napíš text.', 'err'); return; }
+    if (!songMode()) setMode('song');
+    document.activeElement && document.activeElement.blur();
+    let idx = slides.filter(s => s.time != null && s.time < tNow - 0.01).length;
+    if (idx >= slides.length) { idx = 0; tNow = 0; }
+    tap = { idx, hist: [] };
+    $('tapbar').classList.add('show');
+    updateTap();
+    if (!playing) setPlaying(true);
+  }
+  function updateTap() {
+    if (!tap) return;
+    const s = slides[tap.idx];
+    const t = s ? (s.gap ? '— pauza —' : s.text.replace(/\*/g, '').trim().split('\n')[0]) : '';
+    $('tapInfo').textContent = s ? `${tap.idx + 1}/${slides.length}: ${t}` : 'hotovo';
+  }
+  function tapMark() {
+    const s = slides[tap.idx];
+    if (!s) return endTap();
+    tap.hist.push({ idx: tap.idx, prev: s.time });
+    s.time = Math.max(0, tNow - 0.05); // ~reakčný čas
+    tap.idx++;
+    writeTimes();
+    if (tap.idx >= slides.length) { endTap(); status('Ťukanie hotové — všetky klipy majú čas.', 'ok'); }
+    else updateTap();
+  }
+  function tapUndo() {
+    const h = tap.hist.pop();
+    if (!h) return;
+    slides[h.idx].time = h.prev;
+    tap.idx = h.idx;
+    writeTimes(); updateTap();
+    seek(Math.max(0, tNow - 3));
+  }
+  function endTap() {
+    tap = null;
+    $('tapbar').classList.remove('show');
+  }
+
+  /* ---------- časová os ---------- */
+  const tc = $('timeline'), tctx = tc.getContext('2d');
+  let drag = null;
+  function fitTimeline() {
+    const r = tc.getBoundingClientRect(), dpr = Math.min(2, window.devicePixelRatio || 1);
+    tc.width = Math.max(10, Math.round(r.width * dpr)); tc.height = Math.max(10, Math.round(r.height * dpr));
+  }
+  const x2t = x => view.a + (x / tc.clientWidth) * (view.b - view.a);
+  const t2x = t => ((t - view.a) / (view.b - view.a)) * tc.clientWidth;
+  function followPlayhead() {
+    const span = view.b - view.a;
+    if (song && (tNow > view.b || tNow < view.a) && span < song.duration) {
+      view.a = clamp(tNow - span * 0.1, 0, song.duration - span); view.b = view.a + span;
+    }
+  }
+  function drawTimeline() {
+    if (!songMode() || $('tlWrap').hidden) return;
+    const c = tctx, dpr = tc.width / Math.max(1, tc.clientWidth), w = tc.clientWidth, h = tc.clientHeight;
+    c.setTransform(dpr, 0, 0, dpr, 0, 0);
+    c.fillStyle = '#0a0a0a'; c.fillRect(0, 0, w, h);
+    const span = view.b - view.a, mid = h * 0.5, amp = h * 0.36;
+    // takty
+    const beat = 60 / Math.max(20, S.bpm), bar = beat * 4;
+    if ((bar / span) * w > 5) {
+      c.fillStyle = '#161616';
+      const k0 = Math.ceil((view.a - song.phase) / bar);
+      for (let t = song.phase + k0 * bar; t < view.b; t += bar) c.fillRect(Math.round(t2x(t)), 0, 1, h);
+    }
+    // klipy
+    clips.forEach(cl => {
+      const x0 = t2x(cl.s), x1 = t2x(cl.e);
+      if (x1 < 0 || x0 > w) return;
+      c.fillStyle = cl.i === cur ? 'rgba(255,255,255,.14)' : 'rgba(255,255,255,.055)';
+      c.fillRect(x0, 0, x1 - x0, h);
+    });
+    // priebeh
+    const P = song.peaks, NP = P.length;
+    for (let x = 0; x < w; x++) {
+      const ta = x2t(x), tb = x2t(x + 1);
+      const i0 = Math.max(0, Math.floor((ta / song.duration) * NP)), i1 = Math.min(NP, Math.ceil((tb / song.duration) * NP));
+      let m = 0;
+      for (let i = i0; i < i1; i++) if (P[i] > m) m = P[i];
+      const hh = Math.max(0.5, Math.sqrt(m) * amp);
+      c.fillStyle = ta < tNow ? '#7a7a7a' : '#3c3c3c';
+      c.fillRect(x, mid - hh, 1, hh * 2);
+    }
+    // značky klipov
+    c.font = '600 10px "Segoe UI", sans-serif'; c.textBaseline = 'top';
+    slides.forEach((s, i) => {
+      if (s.time == null) return;
+      const x = t2x(s.time);
+      if (x < -60 || x > w + 2) return;
+      c.fillStyle = s.gap ? '#777' : i === cur ? '#fff' : '#cfcfcf';
+      c.fillRect(Math.round(x), 0, 1.5, h);
+      c.beginPath(); c.moveTo(x, 0); c.lineTo(x + 7, 0); c.lineTo(x, 9); c.fill();
+      const lbl = String(i + 1).padStart(2, '0') + (s.gap ? ' ·' : ' ' + s.text.replace(/\*/g, '').trim().split('\n')[0]);
+      const nxt = slides.slice(i + 1).find(q => q.time != null);
+      const room = (nxt ? t2x(nxt.time) : w) - x - 8;
+      if (room > 18) {
+        c.save(); c.beginPath(); c.rect(x + 3, 10, room, 14); c.clip();
+        c.fillStyle = s.gap ? '#888' : '#e6e6e6'; c.fillText(lbl, x + 4, 11); c.restore();
+      }
+    });
+    // časová stupnica
+    const steps = [1, 2, 5, 10, 15, 30, 60, 120];
+    const st = steps.find(v => (v / span) * w > 70) || 300;
+    c.fillStyle = '#5c5c5c'; c.textBaseline = 'bottom';
+    for (let t = Math.ceil(view.a / st) * st; t < view.b; t += st) {
+      const x = t2x(t);
+      c.fillRect(x, h - 4, 1, 4); c.fillText(fmtT(t, 0), x + 3, h - 1);
+    }
+    // prehrávacia hlava
+    const px = t2x(tNow);
+    c.fillStyle = '#ff3b3b'; c.fillRect(Math.round(px) - 1, 0, 2, h);
+  }
+  function markerAt(x) {
+    let best = -1, bd = 7;
+    slides.forEach((s, i) => { if (s.time != null) { const d = Math.abs(t2x(s.time) - x); if (d < bd) { bd = d; best = i; } } });
+    return best;
+  }
+  function bindTimeline() {
+    const pos = e => e.clientX - tc.getBoundingClientRect().left;
+    tc.addEventListener('mousedown', e => {
+      if (!songMode()) return;
+      e.preventDefault();
+      const x = pos(e), m = markerAt(x);
+      if (m >= 0) {
+        drag = { kind: 'mark', idx: m, shift: e.shiftKey, orig: slides.map(s => s.time), t0: x2t(x) };
+        cur = slides[m].gap ? cur : m; markChips();
+      } else { drag = { kind: 'seek' }; seek(x2t(x)); }
+    });
+    window.addEventListener('mousemove', e => {
+      if (!songMode()) return;
+      const x = pos(e);
+      if (!drag) { tc.style.cursor = markerAt(x) >= 0 ? 'ew-resize' : 'crosshair'; return; }
+      if (drag.kind === 'seek') { seek(x2t(x)); return; }
+      const dt = x2t(x) - drag.t0, o = drag.orig, me = o[drag.idx];
+      if (drag.shift) {
+        slides.forEach((s, j) => { if (o[j] != null && o[j] >= me) s.time = Math.max(0, o[j] + dt); });
+      } else {
+        let lo = 0, hi = song.duration;
+        o.forEach((t, j) => { if (j === drag.idx || t == null) return; if (t <= me && t > lo) lo = t + 0.05; if (t > me && t < hi) hi = t - 0.05; });
+        slides[drag.idx].time = clamp(me + dt, lo, hi);
+      }
+      recompute(); dirty = true;
+    });
+    window.addEventListener('mouseup', () => {
+      if (drag && drag.kind === 'mark') writeTimes();
+      drag = null;
+    });
+    tc.addEventListener('wheel', e => {
+      if (!songMode()) return;
+      e.preventDefault();
+      const t = x2t(pos(e)), span = view.b - view.a;
+      const ns = clamp(span * (e.deltaY > 0 ? 1.25 : 0.8), 2, song.duration);
+      view.a = clamp(t - ((t - view.a) * ns) / span, 0, song.duration - ns); view.b = view.a + ns;
+      dirty = true;
+    }, { passive: false });
+    tc.addEventListener('dblclick', () => { if (song) { view = { a: 0, b: song.duration }; dirty = true; } });
   }
 
   /* ---------- náhľady štýlov ---------- */
@@ -2907,93 +3720,159 @@ function renderFrame(ctx, W, H, t, S, raw, styleIdx, Doverride) {
       b.title = `${String(i + 1).padStart(2, '0')} ${st.name}`;
       const cv = document.createElement('canvas');
       b.firstChild.appendChild(cv);
-      b.onclick = () => { S.style = i; tNow = 0; markStyle(); changed(); };
+      b.onclick = () => {
+        S.style = i; S.auto = false; $('auto').checked = false;
+        if (!songMode()) tNow = 0;
+        changed();
+      };
       b.onmouseenter = () => { hover = i; };
-      b.onmouseleave = () => { hover = -1; drawThumb(i, poseTime()); };
+      b.onmouseleave = () => { hover = -1; const D = curD(); drawThumb(i, poseTime(D), D); };
       host.appendChild(b);
       thumbs.push({ b, cv, ctx: cv.getContext('2d') });
     });
     markStyle();
   }
-  function markStyle() { thumbs.forEach((th, i) => th.b.classList.toggle('on', i === S.style)); }
-  function drawThumb(i, t) {
+  function markStyle() {
+    const k = styleOf(cur);
+    thumbs.forEach((th, i) => { th.b.classList.toggle('on', !S.auto && i === S.style); th.b.classList.toggle('auto', S.auto && i === k); });
+    $('styleNote').textContent = S.auto && slides.length ? `Klip ${cur + 1} → ${String(k + 1).padStart(2, '0')} ${STYLES[k].name}` : '';
+    $('autoSet').disabled = $('autoShuffle').disabled = !S.auto;
+  }
+  function drawThumb(i, t, D) {
     const th = thumbs[i], text = slideText() || 'TEXT';
-    renderFrame(th.ctx, th.cv.width, th.cv.height, t, S, text, i);
+    renderFrame(th.ctx, th.cv.width, th.cv.height, t, S, slides[cur] && slides[cur].gap ? 'PAUZA' : text, i, D);
   }
   function renderThumbs() {
-    const ar = S.w / S.h, tw = 384, thh = Math.max(24, Math.round(tw / ar));
+    const ar = S.w / S.h, tw = 320, thh = Math.max(24, Math.round(tw / ar)), D = curD(), t = poseTime(D);
     thumbs.forEach((th, i) => {
       if (th.cv.width !== tw || th.cv.height !== thh) { th.cv.width = tw; th.cv.height = thh; }
-      drawThumb(i, poseTime());
+      drawThumb(i, t, D);
     });
   }
 
   /* ---------- info ---------- */
   function updateInfo() {
-    $('vinfo').textContent = `${S.w}×${S.h} · ${S.fps} FPS · KLIP ${slides.length ? cur + 1 : 0}/${slides.length} · ${String(S.style + 1).padStart(2, '0')} ${STYLES[S.style].name}`;
+    const W = even(S.w), H = even(S.h);
+    const st = styleOf(cur), stTxt = `${String(st + 1).padStart(2, '0')} ${STYLES[st].name}${S.auto ? ' (AUTO)' : ''}`;
+    if (songMode()) {
+      $('vinfo').textContent = `${S.w}×${S.h} · ${S.fps} FPS · SKLADBA ${fmtT(song.duration, 0)} · KLIP ${cur + 1}/${slides.length} · ${stTxt}`;
+    } else {
+      $('vinfo').textContent = `${S.w}×${S.h} · ${S.fps} FPS · KLIP ${slides.length ? cur + 1 : 0}/${slides.length} · ${stTxt}`;
+    }
     $('beatsOut').textContent = `≈ ${(S.duration * S.bpm / 60).toFixed(1)} dôb`;
-    const W = even(S.w), H = even(S.h), frames = Math.max(1, Math.round(S.duration * S.fps));
-    const mb = (bitrate(W, H, S.fps) * S.duration) / 8 / 1e6;
-    $('estimate').textContent = `${frames} snímok na klip · max. ~${mb < 10 ? mb.toFixed(1) : Math.round(mb)} MB (čierne pozadie býva oveľa menej)`;
+    const scope = S.scope === 'song' && songMode() ? 'song' : S.scope === 'song' ? 'current' : S.scope;
+    const dur = scope === 'song' ? song.duration : S.duration;
+    const frames = Math.max(1, Math.ceil(dur * S.fps));
+    const mb = (bitrate(W, H, S.fps) * dur) / 8 / 1e6;
+    const k = S.ssaa ? ssaaK(W, H) : 1;
+    $('estimate').textContent = `${frames} snímok ${scope === 'song' ? 'v skladbe' : 'na klip'} · max. ~${mb < 10 ? mb.toFixed(1) : Math.round(mb)} MB · ${(bitrate(W, H, S.fps) / 1e6).toFixed(0)} Mb/s` +
+      (k > 1 ? ` · vyhladzovanie ${k}×` : '');
     document.querySelectorAll('#resChips .chip').forEach(c => c.classList.toggle('on', c.dataset.w == S.w && c.dataset.h == S.h));
-    document.querySelectorAll('#scope button').forEach(b => b.classList.toggle('on', b.dataset.v === S.scope));
+    document.querySelectorAll('#scope button').forEach(b => b.classList.toggle('on', b.dataset.v === scope));
   }
 
   /* =====================================================================
      EXPORT
      ===================================================================== */
+  // faktor supersamplingu podľa veľkosti (aby 4K export nezabral celú pamäť)
+  function ssaaK(W, H) { const px = W * H; return px <= 4.2e6 ? 2 : px <= 9e6 ? 1.5 : 1; }
+  function makeRenderTarget(W, H, ss) {
+    const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+    const ctx = cv.getContext('2d', { alpha: false });
+    const k = ss ? ssaaK(W, H) : 1;
+    if (k <= 1) return { cv, k, draw: fn => fn(ctx, W, H) };
+    const big = document.createElement('canvas'); big.width = Math.round(W * k); big.height = Math.round(H * k);
+    const bctx = big.getContext('2d', { alpha: false });
+    return {
+      cv, k,
+      draw(fn) {
+        fn(bctx, big.width, big.height);
+        ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(big, 0, 0, W, H);
+      },
+    };
+  }
   async function pickCodec(W, H, fps, br) {
-    const avc = ['avc1.640028', 'avc1.64002A', 'avc1.640032', 'avc1.640033', 'avc1.640034', 'avc1.64003C', 'avc1.64003D', 'avc1.64003E',
-      'avc1.4D0028', 'avc1.4D0033', 'avc1.4D0034', 'avc1.42E028', 'avc1.42E033', 'avc1.42E034'];
-    for (const codec of avc) {
-      const cfg = { codec, width: W, height: H, bitrate: br, framerate: fps, avc: { format: 'avc' } };
+    const avc = ['avc1.640033', 'avc1.640034', 'avc1.64003C', 'avc1.64003D', 'avc1.64003E', 'avc1.640028', 'avc1.64002A', 'avc1.640032',
+      'avc1.4D0033', 'avc1.4D0034', 'avc1.4D0028', 'avc1.42E033', 'avc1.42E034', 'avc1.42E028'];
+    const extras = [{ bitrateMode: 'variable', latencyMode: 'quality' }, {}];
+    for (const ex of extras) for (const codec of avc) {
+      const cfg = Object.assign({ codec, width: W, height: H, bitrate: br, framerate: fps, avc: { format: 'avc' } }, ex);
       try { if ((await VideoEncoder.isConfigSupported(cfg)).supported) return { cfg, mux: 'avc', name: 'H.264' }; } catch (e) {}
     }
-    for (const codec of ['vp09.00.40.08', 'vp09.00.41.08', 'vp09.00.50.08', 'vp09.00.51.08', 'vp09.00.60.08', 'vp09.00.61.08']) {
-      const cfg = { codec, width: W, height: H, bitrate: br, framerate: fps };
+    for (const ex of extras) for (const codec of ['vp09.00.40.08', 'vp09.00.41.08', 'vp09.00.50.08', 'vp09.00.51.08', 'vp09.00.60.08', 'vp09.00.61.08']) {
+      const cfg = Object.assign({ codec, width: W, height: H, bitrate: br, framerate: fps }, ex);
       try { if ((await VideoEncoder.isConfigSupported(cfg)).supported) return { cfg, mux: 'vp9', name: 'VP9' }; } catch (e) {}
     }
     return null;
   }
-  function waitQueue(enc) {
+  async function pickAudio(sr) {
+    if (!('AudioEncoder' in window)) return null;
+    for (const [codec, mux, br, name] of [['mp4a.40.2', 'aac', 256000, 'AAC'], ['mp4a.40.2', 'aac', 192000, 'AAC'], ['mp4a.40.2', 'aac', 160000, 'AAC'], ['opus', 'opus', 192000, 'Opus']]) {
+      const cfg = { codec, sampleRate: sr, numberOfChannels: 2, bitrate: br };
+      try { if ((await AudioEncoder.isConfigSupported(cfg)).supported) return { cfg, mux, name }; } catch (e) {}
+    }
+    return null;
+  }
+  function waitQueue(enc, max = 4) {
     return new Promise(res => {
-      if (enc.encodeQueueSize <= 4) return res();
-      const h = () => { if (enc.encodeQueueSize <= 4) { enc.removeEventListener('dequeue', h); clearTimeout(to); res(); } };
+      if (enc.encodeQueueSize <= max) return res();
+      const h = () => { if (enc.encodeQueueSize <= max) { enc.removeEventListener('dequeue', h); clearTimeout(to); res(); } };
       const to = setTimeout(() => { enc.removeEventListener('dequeue', h); res(); }, 250);
       enc.addEventListener('dequeue', h);
     });
   }
-  async function encodeClip(SS, text, W, H, codec, onProg) {
-    const fps = SS.fps;
-    const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
-    const ctx = cv.getContext('2d');
-    const frames = Math.max(1, Math.round(SS.duration * fps));
-    // pri odchode > 0 je posledná snímka úplne čierna; bez odchodu klip plynulo loopuje
-    const Dr = SS.tout > 0 ? Math.max(1, frames - 1) / fps : frames / fps;
-    const target = new Mp4Muxer.ArrayBufferTarget();
-    const muxer = new Mp4Muxer.Muxer({ target, video: { codec: codec.mux, width: W, height: H, frameRate: fps }, fastStart: 'in-memory' });
+  // spoločné kódovanie: video (+ voliteľne zvuk) do MP4
+  async function encodeMovie(o) {
+    const { W, H, fps, frames, codec, target, fastStart, render, onProg } = o;
+    const gop = o.gop || Math.max(1, Math.round(fps));
+    const rt = makeRenderTarget(W, H, o.ssaa);
+    const mo = { target, video: { codec: codec.mux, width: W, height: H, frameRate: fps }, fastStart, firstTimestampBehavior: 'offset' };
+    const A = o.audio ? o.audio.buf : null;
+    if (A) mo.audio = { codec: o.audio.codec.mux, numberOfChannels: 2, sampleRate: A.sampleRate };
+    const muxer = new Mp4Muxer.Muxer(mo);
     let err = null;
-    const enc = new VideoEncoder({ output: (ch, meta) => muxer.addVideoChunk(ch, meta), error: e => { err = e; } });
-    enc.configure(codec.cfg);
-    const gop = Math.max(1, Math.round(fps));
+    const venc = new VideoEncoder({ output: (ch, meta) => muxer.addVideoChunk(ch, meta), error: e => { err = e; } });
+    venc.configure(codec.cfg);
+    let aenc = null, aPos = 0;
+    const sr = A ? A.sampleRate : 0, aLen = A ? A.length : 0;
+    const c0 = A ? A.getChannelData(0) : null, c1 = A ? (A.numberOfChannels > 1 ? A.getChannelData(1) : c0) : null;
+    if (A) {
+      aenc = new AudioEncoder({ output: (ch, meta) => muxer.addAudioChunk(ch, meta), error: e => { err = e; } });
+      aenc.configure(o.audio.codec.cfg);
+    }
+    const feed = async until => {
+      const end = Math.min(aLen, Math.round(until * sr));
+      while (aPos < end) {
+        const n = Math.min(4096, end - aPos), data = new Float32Array(n * 2);
+        data.set(c0.subarray(aPos, aPos + n), 0); data.set(c1.subarray(aPos, aPos + n), n);
+        const ad = new AudioData({ format: 'f32-planar', sampleRate: sr, numberOfFrames: n, numberOfChannels: 2, timestamp: Math.round((aPos / sr) * 1e6), data });
+        aenc.encode(ad); ad.close();
+        aPos += n;
+        await waitQueue(aenc, 24);
+      }
+    };
     try {
       for (let i = 0; i < frames; i++) {
         if (cancelFlag) throw new Error('cancel');
         if (err) throw err;
-        renderFrame(ctx, W, H, i / fps, SS, text, SS.style, Dr);
-        const vf = new VideoFrame(cv, { timestamp: Math.round((i * 1e6) / fps), duration: Math.round(1e6 / fps) });
-        enc.encode(vf, { keyFrame: i % gop === 0 });
+        rt.draw((ctx, w, h) => render(ctx, w, h, i));
+        const vf = new VideoFrame(rt.cv, { timestamp: Math.round((i * 1e6) / fps), duration: Math.round(1e6 / fps) });
+        venc.encode(vf, { keyFrame: i % gop === 0 });
         vf.close();
-        await waitQueue(enc);
+        if (aenc) await feed((i + 1) / fps + 0.5);
+        await waitQueue(venc);
         if (i % 4 === 0 || i === frames - 1) { onProg(i + 1, frames); await sleep(0); }
       }
-      await enc.flush();
+      if (aenc) { await feed(frames / fps); await aenc.flush(); }
+      await venc.flush();
       if (err) throw err;
     } finally {
-      if (enc.state !== 'closed') enc.close();
+      if (venc.state !== 'closed') venc.close();
+      if (aenc && aenc.state !== 'closed') aenc.close();
     }
     muxer.finalize();
-    return new Blob([target.buffer], { type: 'video/mp4' });
+    return rt.k;
   }
   async function saveBlob(blob, name) {
     if (dirHandle) {
@@ -3015,50 +3894,135 @@ function renderFrame(ctx, W, H, t, S, raw, styleIdx, Doverride) {
     $('exportBtn').disabled = b; $('stillBtn').disabled = b; $('pickDir').disabled = b;
     $('cancelBtn').disabled = !b;
     $('exportBtn').textContent = b ? 'EXPORTUJEM…' : 'EXPORTOVAŤ MP4';
+    if (b && songMode()) { audioStop(); if (playing) setPlaying(false); }
   }
-  async function doExport() {
-    if (busy) return;
-    if (!('VideoEncoder' in window)) { status('Tento prehliadač nevie exportovať video. Otvor súbor v Chrome alebo Edge.', 'err'); return; }
-    if (!slides.length) { status('Najprv napíš text.', 'err'); return; }
-    const SS = JSON.parse(JSON.stringify(S)); SS.family = S.family;
-    const sl = slides.map(s => ({ text: s.text }));
-    const list = SS.scope === 'all' ? sl.map((_, i) => i) : [cur];
-    const W = even(SS.w), H = even(SS.h);
-    cancelFlag = false; setBusy(true); $('bar').style.width = '0%';
-    status('Pripravujem kódovanie…');
+  // kam uložiť dlhé video skladby: priamo do súboru (bez držania v pamäti), inak stiahnuť
+  async function songTarget(name, forceMemory) {
+    if (!forceMemory && dirHandle) {
+      try {
+        const fh = await dirHandle.getFileHandle(name, { create: true }), ws = await fh.createWritable();
+        return { target: new Mp4Muxer.FileSystemWritableFileStreamTarget(ws), fastStart: false, ws, where: 'dir', label: dirHandle.name + '/' + name };
+      } catch (e) { console.warn(e); }
+    }
+    if (!forceMemory && window.showSaveFilePicker) {
+      try {
+        const fh = await window.showSaveFilePicker({ suggestedName: name, types: [{ description: 'MP4 video', accept: { 'video/mp4': ['.mp4'] } }] });
+        const ws = await fh.createWritable();
+        return { target: new Mp4Muxer.FileSystemWritableFileStreamTarget(ws), fastStart: false, ws, where: 'file', label: fh.name };
+      } catch (e) { if (e.name === 'AbortError') throw new Error('cancel'); console.warn(e); }
+    }
+    return { target: new Mp4Muxer.ArrayBufferTarget(), fastStart: 'in-memory', where: 'dl', label: name };
+  }
+  function eta(t0, done, tot) {
+    const el = (performance.now() - t0) / 1000;
+    if (done < 8 || el < 1) return '';
+    const s = (el / done) * (tot - done);
+    return ` · zostáva ~${s >= 60 ? Math.floor(s / 60) + ' min ' : ''}${Math.round(s % 60)} s`;
+  }
+  async function exportSong(SS, W, H, opts = {}) {
+    const name = `${slug(song.name)}_${W}x${H}_${SS.fps}fps.mp4`;
+    const tg = await songTarget(name, opts.blob);
+    const clipsSnap = clips.map(c => Object.assign({}, c));
+    const dur = song.duration, frames = Math.max(1, Math.ceil(dur * SS.fps));
+    let ok = false;
     try {
       await ensureFont();
       const codec = await pickCodec(W, H, SS.fps, bitrate(W, H, SS.fps));
       if (!codec) throw new Error(`prehliadač nevie kódovať video ${W}×${H} pri ${SS.fps} FPS. Skús nižšie rozlíšenie alebo FPS.`);
-      let where = 'dl';
-      for (let k = 0; k < list.length; k++) {
-        const idx = list[k];
-        const blob = await encodeClip(SS, sl[idx].text, W, H, codec, (fr, tot) => {
-          $('bar').style.width = (((k + fr / tot) / list.length) * 100).toFixed(1) + '%';
-          status(`Klip ${k + 1}/${list.length} · snímka ${fr}/${tot} · ${codec.name}`);
-        });
-        where = await saveBlob(blob, fileName(SS, sl, idx, W, H, 'mp4'));
+      let audio = null;
+      if (SS.withAudio) {
+        const ac = await pickAudio(song.buf.sampleRate);
+        if (ac) audio = { buf: song.buf, codec: ac };
+        else status('Prehliadač nevie kódovať zvuk — video bude bez zvuku.', 'warn');
       }
-      $('bar').style.width = '100%';
-      const n = list.length;
-      let msg = `Hotovo: ${n} ${plural(n, 'video uložené', 'videá uložené', 'videí uložených')} ${where === 'dir' ? 'do priečinka „' + dirHandle.name + '“' : 'do Stiahnutých súborov'} (${W}×${H}, ${SS.fps} FPS, ${codec.name}).`;
-      if (codec.mux !== 'avc') msg += ' Pozor: tento prehliadač nemá H.264, použil sa VP9 — pre H.264 otvor generátor v Chrome alebo Edge.';
+      const tStart = performance.now();
+      const k = await encodeMovie({
+        W, H, fps: SS.fps, frames, codec, target: tg.target, fastStart: tg.fastStart, ssaa: SS.ssaa, audio, gop: Math.round(SS.fps * 2),
+        render: (ctx, w, h, i) => renderSongFrame(ctx, w, h, i / SS.fps, SS, clipsSnap),
+        onProg: (fr, tot) => {
+          $('bar').style.width = ((fr / tot) * 100).toFixed(1) + '%';
+          status(`Skladba · ${fmtT(fr / SS.fps, 0)} / ${fmtT(dur, 0)} · snímka ${fr}/${tot} · ${codec.name}${audio ? ' + ' + audio.codec.name : ''}${eta(tStart, fr, tot)}`);
+        },
+      });
+      if (tg.ws) await tg.ws.close();
+      ok = true;
+      if (opts.blob) return new Blob([tg.target.buffer], { type: 'video/mp4' });
+      let where = tg.where;
+      if (tg.where === 'dl') where = await saveBlob(new Blob([tg.target.buffer], { type: 'video/mp4' }), name);
+      const loc = where === 'dir' ? `do priečinka „${dirHandle.name}“` : where === 'file' ? `ako „${tg.label}“` : 'do Stiahnutých súborov';
+      let msg = `Hotovo: video skladby uložené ${loc} (${W}×${H}, ${SS.fps} FPS, ${fmtT(dur, 0)}, ${codec.name}${audio ? ' + ' + audio.codec.name : ', bez zvuku'}${k > 1 ? ', vyhladzovanie ' + k + '×' : ''}).`;
+      if (codec.mux !== 'avc') msg += ' Pozor: použil sa VP9 — pre H.264 otvor generátor v Chrome alebo Edge.';
       status(msg, codec.mux !== 'avc' ? 'warn' : 'ok');
+    } finally {
+      if (!ok && tg.ws) { try { await tg.ws.abort(); } catch (e) {} }
+    }
+  }
+  async function exportClips(SS, W, H) {
+    const list = (SS.scope === 'all' ? slides.map((_, i) => i) : [cur]).filter(i => slides[i] && !slides[i].gap);
+    if (!list.length) throw new Error('vybraný klip je prázdny (pauza).');
+    await ensureFont();
+    const codec = await pickCodec(W, H, SS.fps, bitrate(W, H, SS.fps));
+    if (!codec) throw new Error(`prehliadač nevie kódovať video ${W}×${H} pri ${SS.fps} FPS. Skús nižšie rozlíšenie alebo FPS.`);
+    let where = 'dl', k = 1;
+    const frames = Math.max(1, Math.round(SS.duration * SS.fps));
+    // pri odchode > 0 je posledná snímka úplne čierna; bez odchodu klip plynulo loopuje
+    const Dr = SS.tout > 0 ? Math.max(1, frames - 1) / SS.fps : frames / SS.fps;
+    for (let n = 0; n < list.length; n++) {
+      const idx = list[n], text = slides[idx].text, style = styleOf(idx);
+      const target = new Mp4Muxer.ArrayBufferTarget();
+      k = await encodeMovie({
+        W, H, fps: SS.fps, frames, codec, target, fastStart: 'in-memory', ssaa: SS.ssaa,
+        render: (ctx, w, h, i) => renderFrame(ctx, w, h, i / SS.fps, SS, text, style, Dr),
+        onProg: (fr, tot) => {
+          $('bar').style.width = (((n + fr / tot) / list.length) * 100).toFixed(1) + '%';
+          status(`Klip ${n + 1}/${list.length} · snímka ${fr}/${tot} · ${codec.name}`);
+        },
+      });
+      where = await saveBlob(new Blob([target.buffer], { type: 'video/mp4' }), fileName(SS, text, idx, style, W, H, 'mp4'));
+    }
+    const c = list.length;
+    let msg = `Hotovo: ${c} ${plural(c, 'video uložené', 'videá uložené', 'videí uložených')} ${where === 'dir' ? 'do priečinka „' + dirHandle.name + '“' : 'do Stiahnutých súborov'} (${W}×${H}, ${SS.fps} FPS, ${codec.name}${k > 1 ? ', vyhladzovanie ' + k + '×' : ''}).`;
+    if (codec.mux !== 'avc') msg += ' Pozor: tento prehliadač nemá H.264, použil sa VP9 — pre H.264 otvor generátor v Chrome alebo Edge.';
+    status(msg, codec.mux !== 'avc' ? 'warn' : 'ok');
+  }
+  async function doExport(opts = {}) {
+    if (busy) return;
+    if (!('VideoEncoder' in window)) { status('Tento prehliadač nevie exportovať video. Otvor súbor v Chrome alebo Edge.', 'err'); return; }
+    if (!slides.length) { status('Najprv napíš text.', 'err'); return; }
+    const SS = JSON.parse(JSON.stringify(S)); SS.family = S.family;
+    const W = even(SS.w), H = even(SS.h);
+    const isSong = SS.scope === 'song' && songMode();
+    if (isSong && !clips.length) { status('Klipy nemajú časy — klikni „Automaticky“ alebo „Ťukať“.', 'err'); return; }
+    cancelFlag = false; setBusy(true); $('bar').style.width = '0%';
+    status('Pripravujem kódovanie…');
+    try {
+      if (isSong) return await exportSong(SS, W, H, opts);
+      await exportClips(SS, W, H);
     } catch (e) {
       if (e && e.message === 'cancel') status('Export zrušený.', 'warn');
       else { console.error(e); status('Chyba exportu: ' + (e && e.message ? e.message : e), 'err'); }
     } finally {
+      $('bar').style.width = '100%';
       setBusy(false); dirty = true;
     }
   }
   async function doStill() {
     if (busy || !slides.length) return;
     await ensureFont();
-    const W = even(S.w), H = even(S.h), t = playing ? poseTime() : tNow;
-    const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
-    renderFrame(cv.getContext('2d'), W, H, t, S, slideText(), S.style);
-    const blob = await new Promise(r => cv.toBlob(r, 'image/png'));
-    const where = await saveBlob(blob, fileName(S, slides, cur, W, H, 'png'));
+    const W = even(S.w), H = even(S.h);
+    const rt = makeRenderTarget(W, H, S.ssaa);
+    let t, name;
+    if (songMode()) {
+      t = tNow;
+      rt.draw((ctx, w, h) => renderSongFrame(ctx, w, h, t, S, clips));
+      name = `${slug(song.name)}_${fmtT(t, 2).replace(/[:.]/g, '-')}_${W}x${H}.png`;
+    } else {
+      t = playing ? poseTime() : tNow;
+      rt.draw((ctx, w, h) => renderFrame(ctx, w, h, t, S, slideText(), styleOf(cur)));
+      name = fileName(S, slideText(), cur, styleOf(cur), W, H, 'png');
+    }
+    const blob = await new Promise(r => rt.cv.toBlob(r, 'image/png'));
+    const where = await saveBlob(blob, name);
     status(`Snímka uložená ${where === 'dir' ? 'do priečinka „' + dirHandle.name + '“' : 'do Stiahnutých súborov'} (${t.toFixed(2)} s).`, 'ok');
   }
 
@@ -3115,6 +4079,55 @@ function renderFrame(ctx, W, H, t, S, raw, styleIdx, Doverride) {
     $('color').addEventListener('input', e => { S.color = e.target.value; changed(); });
     $('accent').addEventListener('input', e => { S.accent = e.target.value; changed(); });
 
+    // auto režim
+    $('auto').checked = S.auto;
+    $('auto').addEventListener('change', e => { S.auto = e.target.checked; changed({ now: true }); });
+    $('autoSet').value = S.autoSet;
+    $('autoSet').addEventListener('change', e => { S.autoSet = e.target.value; changed({ now: true }); });
+    $('autoShuffle').onclick = () => { S.autoSeed = (S.autoSeed | 0) + 1; changed({ now: true }); };
+
+    // skladba
+    document.querySelectorAll('#mode button').forEach(b => b.onclick = () => { if (!b.disabled) setMode(b.dataset.v); });
+    $('songLoad').onclick = () => $('songFile').click();
+    $('songFile').addEventListener('change', async e => {
+      const f = e.target.files[0]; if (!f) return;
+      try { await loadSong(f, true); } catch (err) { console.error(err); status('Skladbu sa nepodarilo načítať: ' + (err.message || err), 'err'); }
+      e.target.value = '';
+    });
+    $('songDel').onclick = async () => {
+      if (!song) return;
+      audioStop(); song = null;
+      try { await idb.del('song'); } catch (e) {}
+      setMode('clips'); status('Skladba odstránená.', 'ok');
+    };
+    $('autoTime').onclick = () => {
+      if (slides.some(s => s.time != null) && !confirm('Prepísať existujúce časy klipov?')) return;
+      autoDistribute();
+    };
+    $('tapTime').onclick = startTap;
+    $('tapEnd').onclick = endTap;
+    $('clearTime').onclick = () => {
+      if (!slides.some(s => s.time != null) || !confirm('Zmazať všetky časy z textu?')) return;
+      slides = slides.filter(s => !s.gap); slides.forEach(s => { s.time = null; }); writeTimes();
+    };
+    $('lrcLoad').onclick = () => $('lrcFile').click();
+    $('lrcFile').addEventListener('change', async e => {
+      const f = e.target.files[0]; if (!f) return;
+      e.target.value = '';
+      const items = parseTimedLyrics(await f.text());
+      if (!items.length) { status('V súbore som nenašiel žiadne časy (LRC alebo SRT).', 'err'); return; }
+      if (S.text.trim() && S.text !== DEF.text && !confirm(`Nahradiť aktuálny text textom zo súboru „${f.name}“?`)) return;
+      S.text = joinSlides(items);
+      $('text').value = S.text; cur = 0;
+      refreshSlides(); changed({ now: true });
+      status(`Importovaných ${items.filter(i => !i.gap).length} riadkov s časmi.` + (song ? '' : ' Teraz nahraj skladbu.'), 'ok');
+    });
+    bindNumber('lead', 'lead', 0, 3);
+    bindNumber('songMax', 'songMax', 1, 120);
+    $('withAudio').checked = S.withAudio;
+    $('withAudio').addEventListener('change', e => { S.withAudio = e.target.checked; changed(); });
+    bindTimeline();
+
     // čas
     bindNumber('duration', 'duration', 0.5, 600);
     bindNumber('tin', 'tin', 0, 20);
@@ -3152,9 +4165,11 @@ function renderFrame(ctx, W, H, t, S, raw, styleIdx, Doverride) {
     $('fps').addEventListener('change', e => { S.fps = +e.target.value; changed(); });
     $('quality').value = S.quality;
     $('quality').addEventListener('change', e => { S.quality = e.target.value; changed(); });
+    $('ssaa').checked = S.ssaa;
+    $('ssaa').addEventListener('change', e => { S.ssaa = e.target.checked; changed(); });
 
     // export
-    document.querySelectorAll('#scope button').forEach(b => b.onclick = () => { S.scope = b.dataset.v; changed(); });
+    document.querySelectorAll('#scope button').forEach(b => b.onclick = () => { if (!b.disabled) { S.scope = b.dataset.v; changed(); } });
     $('pickDir').onclick = async () => {
       if (!window.showDirectoryPicker) { status('Výber priečinka tento prehliadač nepodporuje — súbory pôjdu do Stiahnutých.', 'warn'); return; }
       try {
@@ -3162,29 +4177,54 @@ function renderFrame(ctx, W, H, t, S, raw, styleIdx, Doverride) {
         $('pickDir').textContent = 'Priečinok: ' + dirHandle.name;
       } catch (e) { if (e.name !== 'AbortError') status('Priečinok sa nepodarilo otvoriť: ' + e.message, 'err'); }
     };
-    $('exportBtn').onclick = doExport;
+    $('exportBtn').onclick = () => doExport();
     $('stillBtn').onclick = doStill;
     $('cancelBtn').onclick = () => { cancelFlag = true; };
 
     // prehrávanie
     $('play').onclick = () => setPlaying(!playing);
-    $('scrub').addEventListener('input', e => { setPlaying(false); tNow = (e.target.value / 1000) * S.duration; dirty = true; });
-    document.addEventListener('keydown', e => {
-      if (e.code === 'Space' && !/^(TEXTAREA|INPUT|SELECT|BUTTON)$/.test(document.activeElement.tagName)) { e.preventDefault(); setPlaying(!playing); }
+    $('scrub').addEventListener('input', e => {
+      const t = (e.target.value / 1000) * totalDur();
+      if (songMode()) seek(t); else { setPlaying(false); tNow = t; dirty = true; }
     });
+    document.addEventListener('keydown', e => {
+      if (tap) {
+        if (e.key === 'Enter' || e.code === 'KeyT') { e.preventDefault(); tapMark(); return; }
+        if (e.key === 'Backspace') { e.preventDefault(); tapUndo(); return; }
+        if (e.key === 'Escape') { e.preventDefault(); endTap(); return; }
+        if (e.code === 'Space') { e.preventDefault(); setPlaying(!playing); return; }
+      }
+      if (e.code === 'Space' && !/^(TEXTAREA|INPUT|SELECT|BUTTON)$/.test(document.activeElement.tagName)) { e.preventDefault(); setPlaying(!playing); }
+    }, true);
 
     if (!('VideoEncoder' in window)) $('banner').classList.add('show');
-    setPlaying(true);
     refreshSlides();
     new ResizeObserver(fitPreview).observe($('viewport'));
+    new ResizeObserver(fitTimeline).observe($('tlWrap'));
+    // zapamätaná skladba
+    let wantSong = S.mode === 'song';
+    try {
+      const f = await idb.get('song');
+      if (f) await loadSong(f, false);
+    } catch (e) { console.warn('Skladbu sa nepodarilo obnoviť:', e); }
+    setMode(wantSong && song ? 'song' : 'clips');
+    if (song && wantSong) status('');
     fitPreview();
     await ensureFont();
     document.fonts.ready.then(() => { dirty = true; renderThumbs(); });
     changed({ now: true });
     requestAnimationFrame(loop);
   }
-  // pre testovanie z konzoly
-  window.LyricsGen = { get state() { return S; }, doExport, renderThumbs, setT: t => { setPlaying(false); tNow = t; dirty = true; }, encodeClip, pickCodec };
+  // pre testovanie z konzoly / Playwright
+  window.LyricsGen = {
+    get state() { return S; }, get clips() { return clips; }, get slides() { return slides; }, get song() { return song; },
+    doExport, renderThumbs, loadSong, autoDistribute, setMode,
+    setT: t => { if (songMode()) { if (playing) setPlaying(false); seek(t); } else { setPlaying(false); tNow = t; dirty = true; } },
+    set(k, v) { S[k] = v; changed({ now: true }); },
+    setText(t) { S.text = t; $('text').value = t; refreshSlides(); changed({ now: true }); },
+    exportSongBlob: () => doExport({ blob: true }),
+    pickCodec,
+  };
   init();
 })();
 
