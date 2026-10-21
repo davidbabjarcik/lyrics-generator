@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="sk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lyrics Generator</title>
+<style>
+/*@@FONTS@@*/
+:root{
+  --bg:#060606; --panel:#0d0d0d; --panel2:#121212; --line:#202020; --line2:#2e2e2e;
+  --text:#ececec; --mute:#8d8d8d; --dim:#575757; --accent:#ffffff; --warn:#ffb347; --err:#ff6b6b;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--text);font:13px/1.45 "Segoe UI",system-ui,-apple-system,sans-serif;-webkit-font-smoothing:antialiased}
+button,input,select,textarea{font:inherit;color:inherit}
+.lbl,h2,.tag{font-size:10.5px;letter-spacing:.24em;text-transform:uppercase;color:var(--mute);font-weight:600}
+
+/* header */
+.top{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;padding:18px 22px 14px}
+.top h1{margin:0;font:800 22px/1 "Montserrat",sans-serif;letter-spacing:.34em;color:#fff}
+.top p{margin:7px 0 0;font-size:10.5px;letter-spacing:.42em;color:var(--mute)}
+.top .tag{letter-spacing:.32em;color:var(--mute)}
+
+/* layout */
+.app{display:grid;grid-template-columns:300px minmax(0,1fr) 300px;gap:14px;padding:0 22px 22px;height:calc(100vh - 74px);min-height:620px}
+.panel{background:var(--panel);border:1px solid var(--line);overflow:auto;scrollbar-width:thin;scrollbar-color:#333 transparent}
+.panel section{padding:16px 16px 18px;border-bottom:1px solid var(--line)}
+.panel section:last-child{border-bottom:0}
+h2{margin:0 0 12px;display:flex;gap:12px}
+h2 b{color:#fff;font-weight:700}
+.stage{display:flex;flex-direction:column;gap:12px;min-width:0;min-height:0}
+
+/* controls */
+textarea{width:100%;min-height:150px;resize:vertical;background:#080808;border:1px solid var(--line2);padding:10px 11px;font:700 14px/1.45 "Montserrat",sans-serif;letter-spacing:.02em;outline:none}
+textarea:focus,input:focus,select:focus{border-color:#555}
+.hint{margin:7px 0 0;color:var(--dim);font-size:11.5px;line-height:1.5}
+.hint code{color:var(--mute);font-family:inherit;background:#161616;padding:0 4px}
+.row{display:flex;align-items:center;gap:8px}
+.field{margin-top:12px}
+.field>.lbl{display:flex;justify-content:space-between;margin-bottom:6px}
+.field>.lbl output{color:#fff;letter-spacing:.06em}
+select,input[type=number],input[type=text]{width:100%;height:32px;background:#080808;border:1px solid var(--line2);padding:0 9px;outline:none;border-radius:0}
+select{appearance:none;background-image:linear-gradient(45deg,transparent 50%,#888 50%),linear-gradient(135deg,#888 50%,transparent 50%);background-position:calc(100% - 15px) 14px,calc(100% - 10px) 14px;background-size:5px 5px;background-repeat:no-repeat;padding-right:26px}
+select option,select optgroup{background:#111}
+input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:18px;background:transparent;margin:0}
+input[type=range]::-webkit-slider-runnable-track{height:2px;background:#2a2a2a}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:12px;height:12px;border-radius:50%;background:#fff;margin-top:-5px;box-shadow:0 0 8px rgba(255,255,255,.35)}
+input[type=range]::-moz-range-track{height:2px;background:#2a2a2a}
+input[type=range]::-moz-range-thumb{width:12px;height:12px;border:0;border-radius:50%;background:#fff}
+input[type=color]{-webkit-appearance:none;appearance:none;width:100%;height:32px;border:1px solid var(--line2);background:#080808;padding:3px;cursor:pointer}
+input[type=color]::-webkit-color-swatch-wrapper{padding:0}
+input[type=color]::-webkit-color-swatch{border:0}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.grid2 .field{margin-top:12px}
+.check{display:flex;align-items:center;gap:9px;margin-top:12px;cursor:pointer;user-select:none}
+.check input{accent-color:#fff;width:14px;height:14px;margin:0}
+.btn{height:32px;padding:0 12px;background:transparent;border:1px solid var(--line2);cursor:pointer;font-size:10.5px;letter-spacing:.2em;text-transform:uppercase;font-weight:600;color:var(--text);white-space:nowrap}
+.btn:hover{border-color:#777;color:#fff}
+.btn:disabled{opacity:.35;cursor:default}
+.btn.primary{background:#fff;color:#000;border-color:#fff;height:44px;width:100%;font-size:12px;letter-spacing:.28em;font-weight:800}
+.btn.primary:hover{background:#ddd}
+.btn.full{width:100%}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{border:1px solid var(--line2);background:transparent;padding:5px 8px;cursor:pointer;font-size:10.5px;letter-spacing:.14em;color:var(--mute);text-transform:uppercase;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chip:hover{color:#fff;border-color:#666}
+.chip.on{color:#000;background:#fff;border-color:#fff}
+.clips{margin-top:12px}
+.clips .chip b{font-weight:800;margin-right:6px}
+.sub{color:var(--dim);font-size:11px;margin-top:6px}
+
+/* viewport */
+.viewport{position:relative;flex:1;min-height:220px;background:#000;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;overflow:hidden}
+.viewport canvas{display:block;background:#000;box-shadow:0 0 0 1px #1c1c1c}
+.vinfo{position:absolute;left:12px;top:10px;font-size:10px;letter-spacing:.26em;color:var(--dim);pointer-events:none}
+.transport{display:flex;align-items:center;gap:12px;background:var(--panel);border:1px solid var(--line);padding:8px 12px}
+.play{width:34px;height:34px;border:1px solid var(--line2);background:transparent;cursor:pointer;display:grid;place-items:center;flex:none}
+.play:hover{border-color:#888}
+.play svg{width:12px;height:12px;fill:#fff}
+.time{font:600 11px/1 "Segoe UI",system-ui,sans-serif;letter-spacing:.12em;color:var(--mute);min-width:96px;text-align:right;font-variant-numeric:tabular-nums}
+.beat{width:8px;height:8px;border-radius:50%;background:#fff;opacity:.12;flex:none}
+
+/* styles grid */
+.styles{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:8px}
+.card{position:relative;border:1px solid var(--line);background:#000;cursor:pointer;overflow:hidden;padding:0;display:flex;flex-direction:column;text-align:left}
+.card .th{position:relative;aspect-ratio:16/9;width:100%}
+.card canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
+.card span{display:block;padding:4px 6px 5px;border-top:1px solid var(--line);font-size:8.5px;letter-spacing:.16em;color:#8a8a8a;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card span b{color:#fff;margin-right:5px}
+.card.on span{color:#fff;border-top-color:#fff}
+.card:hover{border-color:#555}
+.card.on{border-color:#fff;box-shadow:0 0 0 1px #fff inset}
+
+/* export */
+.progress{height:3px;background:#1d1d1d;margin-top:12px;overflow:hidden}
+.progress i{display:block;height:100%;width:0;background:#fff;transition:width .15s}
+.status{margin-top:9px;font-size:12px;color:var(--mute);min-height:18px;line-height:1.5}
+.status.err{color:var(--err)}
+.status.warn{color:var(--warn)}
+.status.ok{color:#fff}
+.seg{display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--line2)}
+.seg button{height:32px;background:transparent;border:0;cursor:pointer;font-size:10.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--mute);font-weight:600}
+.seg button+button{border-left:1px solid var(--line2)}
+.seg button.on{background:#fff;color:#000}
+.res{display:grid;grid-template-columns:1fr auto 1fr;gap:6px;align-items:center}
+.res span{color:var(--dim)}
+.banner{display:none;margin:0 22px 12px;padding:10px 14px;border:1px solid #5a3a12;background:#1c1206;color:var(--warn);font-size:12.5px}
+.banner.show{display:block}
+
+@media (max-width:1180px){
+  .app{grid-template-columns:1fr;height:auto}
+  .viewport{min-height:56vw}
+  .styles{grid-template-columns:repeat(4,minmax(0,1fr))}
+  .panel{overflow:visible}
+}
+</style>
+</head>
+<body>
+<header class="top">
+  <div>
+    <h1>LYRICS GENERATOR</h1>
+    <p>VLASTNÝ GENERÁTOR PRE LED OBRAZOVKU</p>
+  </div>
+  <div class="tag">TEXT • FONT • ANIMÁCIA • EXPORT</div>
+</header>
+<div class="banner" id="banner">Export videa potrebuje <b>Google Chrome</b> alebo <b>Microsoft Edge</b> (aktuálnu verziu). Náhľad funguje, ale tlačidlo Exportovať v tomto prehliadači nepôjde.</div>
+
+<main class="app">
+  <!-- ĽAVÝ PANEL -->
+  <aside class="panel">
+    <section>
+      <h2><b>01</b> TEXT</h2>
+      <textarea id="text" spellcheck="false"></textarea>
+      <p class="hint">Prázdny riadok = <b>nový klip</b> · Enter = zalomenie<br><code>*SLOVO*</code> = zvýraznené slovo (štýl 02)</p>
+      <label class="check"><input type="checkbox" id="upper"><span class="lbl">Veľké písmená</span></label>
+      <div class="clips"><div class="lbl" id="clipsLbl" style="margin-bottom:7px">Klipy</div><div class="chips" id="clips"></div></div>
+    </section>
+    <section>
+      <h2><b>02</b> PÍSMO</h2>
+      <div class="field"><div class="lbl">Font</div><select id="fontSel"></select></div>
+      <div class="field" id="otherWrap" hidden><div class="lbl">Názov nainštalovaného fontu</div><input type="text" id="otherFamily" placeholder="napr. Gilroy Black"></div>
+      <div class="grid2">
+        <div class="field"><div class="lbl">Hrúbka</div><select id="weight">
+          <option value="400">400 Regular</option><option value="500">500 Medium</option><option value="600">600 Semibold</option>
+          <option value="700">700 Bold</option><option value="800">800 Extrabold</option><option value="900">900 Black</option></select></div>
+        <div class="field"><div class="lbl">Vlastný font</div><button class="btn full" id="fontUpload">Nahrať…</button><input type="file" id="fontFile" accept=".ttf,.otf,.woff,.woff2" hidden></div>
+      </div>
+      <div id="sliders1"></div>
+      <div class="grid2">
+        <div class="field"><div class="lbl">Farba textu</div><input type="color" id="color"></div>
+        <div class="field"><div class="lbl">Zvýraznenie</div><input type="color" id="accent"></div>
+      </div>
+      <div id="sliders2"></div>
+    </section>
+  </aside>
+
+  <!-- STRED -->
+  <section class="stage">
+    <div class="viewport" id="viewport">
+      <canvas id="preview"></canvas>
+      <div class="vinfo" id="vinfo"></div>
+    </div>
+    <div class="transport">
+      <button class="play" id="play" title="Prehrať / pauza (medzerník)"></button>
+      <input type="range" id="scrub" min="0" max="1000" value="0">
+      <div class="beat" id="beatDot" title="Doba podľa BPM"></div>
+      <div class="time" id="time">0.00 / 4.00 s</div>
+    </div>
+    <div class="styles" id="styles"></div>
+  </section>
+
+  <!-- PRAVÝ PANEL -->
+  <aside class="panel">
+    <section>
+      <h2><b>03</b> ČAS</h2>
+      <div class="grid2">
+        <div class="field" style="margin-top:0"><div class="lbl">Dĺžka (s)</div><input type="number" id="duration" min="0.5" max="600" step="0.1"></div>
+        <div class="field" style="margin-top:0"><div class="lbl">BPM</div><div class="row"><input type="number" id="bpm" min="40" max="240" step="1"><button class="btn" id="tap" title="Ťukaj do rytmu">TAP</button></div></div>
+        <div class="field"><div class="lbl">Nábeh (s)</div><input type="number" id="tin" min="0" max="20" step="0.05"></div>
+        <div class="field"><div class="lbl">Odchod (s)</div><input type="number" id="tout" min="0" max="20" step="0.05"></div>
+      </div>
+      <div class="field"><div class="lbl"><span>Dĺžka podľa dôb</span><output id="beatsOut"></output></div>
+        <div class="chips" id="beatChips"></div></div>
+      <p class="hint">BPM riadi krokové štýly (03, 05, 07, 12, 15, 16), pulz a rytmus glitchov. Nábeh/odchod 0 = klip na slučku.</p>
+    </section>
+    <section>
+      <h2><b>04</b> VÝSTUP</h2>
+      <div class="field" style="margin-top:0"><div class="lbl">Rozlíšenie (šírka × výška)</div>
+        <div class="res"><input type="number" id="resW" min="64" max="8192" step="2"><span>×</span><input type="number" id="resH" min="64" max="8192" step="2"></div></div>
+      <div class="chips" id="resChips" style="margin-top:8px"></div>
+      <div class="grid2">
+        <div class="field"><div class="lbl">FPS</div><select id="fps"><option>24</option><option>25</option><option>30</option><option>50</option><option>60</option></select></div>
+        <div class="field"><div class="lbl">Kvalita</div><select id="quality"><option value="std">Štandard</option><option value="high">Vysoká</option><option value="max">Maximálna</option></select></div>
+      </div>
+      <p class="sub" id="estimate"></p>
+    </section>
+    <section>
+      <h2><b>05</b> EXPORT</h2>
+      <div class="seg" id="scope"><button data-v="current">Aktuálny klip</button><button data-v="all">Všetky klipy</button></div>
+      <div class="field"><div class="lbl">Ukladať do</div><button class="btn full" id="pickDir" style="text-align:left;text-transform:none;letter-spacing:.04em;font-weight:500">Stiahnuté súbory (predvolené)</button></div>
+      <div class="field"><button class="btn primary" id="exportBtn">EXPORTOVAŤ MP4</button></div>
+      <div class="grid2" style="margin-top:8px">
+        <button class="btn" id="stillBtn">Snímka PNG</button>
+        <button class="btn" id="cancelBtn" disabled>Zrušiť</button>
+      </div>
+      <div class="progress"><i id="bar"></i></div>
+      <div class="status" id="status"></div>
+    </section>
+  </aside>
+</main>
+
+<script>
+//@@MP4MUXER@@
+</script>
+<script>
+//@@ENGINE@@
+</script>
+<script>
+//@@APP@@
+</script>
+</body>
+</html>
