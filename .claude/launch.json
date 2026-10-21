@@ -3,8 +3,8 @@
   "configurations": [
     {
       "name": "lyrics",
-      "runtimeExecutable": "python",
-      "runtimeArgs": ["-m", "http.server", "5173", "--bind", "127.0.0.1"],
+      "runtimeExecutable": ".venv/Scripts/python.exe",
+      "runtimeArgs": ["server.py"],
       "port": 5173
     }
   ]

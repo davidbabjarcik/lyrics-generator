@@ -20,6 +20,9 @@ Fonty a knižnice sú doň vložené ako base64 / inline — žiadne externé po
   alebo Stiahnutých. Nastavenia a nahrané fonty v localStorage.
 - `src/audio.js` — analýza skladby (BPM, fáza dôb, priebeh, začiatok/koniec hudby), import LRC/SRT.
 - `src/app.html` — HTML/CSS šablóna so značkami `/*@@FONTS@@*/`, `//@@MP4MUXER@@`, `//@@ENGINE@@`, `//@@AUDIO@@`, `//@@APP@@`.
+- `server.py` — lokálny server (port 5173): servíruje appku + `/api/align` (stable-ts `model.align(..., original_split=True)`,
+  voliteľne `denoiser='demucs'`), úlohy na pozadí `/api/job/<id>`. Python prostredie v `.venv` (torch cu126), modely v `models/`.
+  `spustit.bat` ho spustí. V appke `aiAlign()` posiela 16 kHz mono float32 PCM + riadky.
 - `build.py` — vloží fonty (@fontsource, latin + latin-ext) a skripty do `LyricsGenerator.html`.
 
 ## Príkazy

@@ -96,6 +96,49 @@ function analyzeSong(buf) {
   };
 }
 
+/* ---------- upratanie vloženého textu (Genius a pod.) ---------- */
+const SECTION_RE = /^\s*\[(?!\d{1,3}:\d)[^\]]*\]\s*$/;            // [Verse 1: …], [Chorus] – nie časy
+const JUNK_LINE_RE = /^\s*(\d+\s*Contributors?.*|.*\bLyrics$|\d*\s*Embed|See .+ Live|Get tickets as low as.*|Translations?|Read More)\s*$/i;
+function looksLikePastedLyrics(s) {
+  return /^\s*\[(verse|chorus|bridge|intro|outro|hook|pre-chorus|refrén|sloha|strofa)[^\]]*\]\s*$/im.test(s) || /You might also like/i.test(s);
+}
+// rozdelí dlhý riadok na 2–3 vyvážené riadky (najradšej za čiarkou alebo pred zátvorkou)
+function wrapLine(line, max = 26) {
+  const L = line.length;
+  if (L <= max + 4) return line;
+  const rows = Math.min(3, Math.ceil(L / max));
+  const words = line.split(/\s+/);
+  const out = [];
+  let curRow = '';
+  for (let i = 0; i < words.length; i++) {
+    const w = words[i], target = (L / rows) * (out.length + 1), done = out.join(' ').length + (out.length ? 1 : 0);
+    const cand = curRow ? curRow + ' ' + w : w;
+    const pos = done + cand.length;
+    const nice = /[,;]$/.test(curRow) || /^\(/.test(w);
+    if (curRow && out.length < rows - 1 && (pos > target + 4 || (nice && pos > target - 6))) { out.push(curRow); curRow = w; }
+    else curRow = cand;
+  }
+  if (curRow) out.push(curRow);
+  return out.join('\n');
+}
+function cleanLyrics(raw, opts = {}) {
+  const lines = String(raw || '').replace(/\r/g, '').replace(/ /g, ' ').split('\n');
+  const per = opts.perClip || 1, out = [];
+  let skip = false, buf = [];
+  const flush = () => { if (buf.length) { out.push(buf.join('\n')); buf = []; } };
+  lines.forEach((ln, i) => {
+    const t = ln.trim();
+    if (/^You might also like/i.test(t)) { skip = true; return; }
+    if (SECTION_RE.test(t)) { skip = false; flush(); return; }
+    if (!t) { skip = false; flush(); return; }
+    if (skip || JUNK_LINE_RE.test(t) || (i === 0 && /Lyrics/i.test(t) && lines.length > 3)) return;
+    buf.push(wrapLine(t.replace(/\s+/g, ' ')));
+    if (buf.length >= per) flush();
+  });
+  flush();
+  return out.join('\n\n');
+}
+
 /* ---------- import LRC / SRT → text s časmi ---------- */
 function parseTimedLyrics(src) {
   src = String(src || '').replace(/^﻿/, '').replace(/\r/g, '');

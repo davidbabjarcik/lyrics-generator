@@ -151,6 +151,7 @@ input[type=color]::-webkit-color-swatch{border:0}
       <h2><b>01</b> TEXT</h2>
       <textarea id="text" spellcheck="false"></textarea>
       <p class="hint">Prázdny riadok = <b>nový klip</b> · Enter = zalomenie<br><code>*SLOVO*</code> = zvýraznené slovo (štýl 02, 21)<br><code>[01:23.45]</code> na začiatku klipu = čas v skladbe</p>
+      <div class="grid2" style="margin-top:8px"><button class="btn" id="cleanBtn" title="Odstráni [Verse]/[Chorus] hlavičky a doplnky z Genius, každý riadok = klip, dlhé riadky zalomí">Upratať text</button><button class="btn" id="undoClean" disabled>Vrátiť pôvodný</button></div>
       <label class="check"><input type="checkbox" id="upper"><span class="lbl">Veľké písmená</span></label>
       <div class="clips"><div class="lbl" id="clipsLbl" style="margin-bottom:7px">Klipy</div><div class="chips" id="clips"></div></div>
     </section>
@@ -214,6 +215,13 @@ input[type=color]::-webkit-color-swatch{border:0}
         <div class="grid2"><button class="btn" id="autoTime" title="Rozloží klipy rovnomerne po hudbe, zarovnané na doby">Automaticky</button><button class="btn" id="tapTime" title="Prehrá skladbu, Enterom označ začiatok každého klipu">Ťukať ⏎</button></div>
         <div class="grid2" style="margin-top:6px"><button class="btn" id="lrcLoad">Import LRC/SRT</button><button class="btn" id="clearTime">Zmazať časy</button></div>
         <input type="file" id="lrcFile" accept=".lrc,.srt,.vtt,.txt" hidden></div>
+      <div class="field"><div class="lbl">Rozpoznať v skladbe (AI)</div>
+        <button class="btn full" id="alignBtn" title="Whisper na tvojom PC nájde, kedy sa ktorý riadok spieva (treba spustit.bat)">Rozpoznať, kde sa čo spieva</button>
+        <div class="grid2" style="margin-top:6px">
+          <select id="alignLang" title="Jazyk spevu"><option value="">Jazyk: auto</option><option value="en">Angličtina</option><option value="sk">Slovenčina</option><option value="cs">Čeština</option><option value="es">Španielčina</option><option value="de">Nemčina</option><option value="hu">Maďarčina</option><option value="pl">Poľština</option></select>
+          <select id="alignModel" title="Väčší model = presnejšie, pomalšie"><option value="small">small (rýchly)</option><option value="medium">medium (presný)</option><option value="turbo">turbo</option></select>
+        </div>
+        <label class="check" title="Najprv oddelí spev od hudby (demucs) – pri rape a hlasnej hudbe oveľa presnejšie"><input type="checkbox" id="alignVocals"><span class="lbl">Oddeliť vokál (presnejšie)</span></label></div>
       <div class="grid2">
         <div class="field"><div class="lbl">Predstih (s)</div><input type="number" id="lead" min="0" max="3" step="0.05" title="O koľko skôr začne animácia pred časom klipu"></div>
         <div class="field"><div class="lbl">Max. klip (s)</div><input type="number" id="songMax" min="1" max="120" step="0.5" title="Najdlhší čas, čo text ostane na obraze (pri dlhých pauzách zmizne)"></div>

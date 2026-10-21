@@ -3,3 +3,5 @@ dist/
 *.mp4
 *.zip
 tests/out/
+.venv/
+models/

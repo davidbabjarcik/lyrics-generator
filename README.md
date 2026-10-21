@@ -10,6 +10,21 @@ Offline generátor animovaných textov pre LED obrazovku. Výsledok je jeden sú
 4. Zadaj rozlíšenie (šírka × výška) a FPS, klikni **Exportovať MP4**
    (aktuálny klip alebo všetky naraz; voliteľne priamo do vybraného priečinka).
 
+### Celý text piesne + automatické načasovanie (AI)
+1. Spusti **`spustit.bat`** — otvorí appku na http://localhost:5173 (server so zarovnaním).
+2. Vlož celý text piesne (napr. z Genius) — hlavičky `[Verse]`, „You might also like“ a pod. sa
+   odstránia samy, každý riadok bude klip, dlhé riadky sa zalomia (tlačidlo **Vrátiť pôvodný** vráti zmenu).
+3. Nahraj skladbu a klikni **Rozpoznať, kde sa čo spieva**. Whisper (stable-ts) na tvojej grafike nájde
+   začiatok každého riadku; pri dlhších pauzách text zmizne. Prvé spustenie stiahne model (~1,5 GB do `models/`).
+4. Skontroluj prehrávaním, prípadné chyby oprav ťahaním značiek na časovej osi.
+
+Inštalácia AI (raz, ~3 GB na disk projektu):
+```
+python -m venv .venv
+.venv\Scripts\python -m pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu126
+.venv\Scripts\python -m pip install stable-ts demucs
+```
+
 ### Video do hudby
 1. V sekcii **Skladba** nahraj MP3/WAV — zistí sa tempo (BPM) a text sa rozloží po skladbe.
 2. Dolaď časy: **Ťukať ⏎** (počas prehrávania stlač Enter na začiatku každého klipu), ťahaním značiek

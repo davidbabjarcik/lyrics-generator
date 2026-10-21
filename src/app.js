@@ -14,6 +14,7 @@
     duration: 4, tin: 0.8, tout: 0.6, bpm: 120,
     w: 1920, h: 1080, fps: 30, quality: 'high', ssaa: true, scope: 'current',
     mode: 'clips', auto: false, autoSet: 'all', autoSeed: 1, lead: 0.2, songMax: 10, withAudio: true,
+    alignLang: '', alignModel: 'medium', alignVocals: true,
   };
   const FONTS = [
     { g: 'Vstavané (fungujú všade)', items: [['Montserrat', 900], ['Inter', 900], ['Poppins', 800], ['Archivo Black', 400], ['Anton', 400], ['Bebas Neue', 400], ['Oswald', 700], ['Barlow Condensed', 800]] },
@@ -332,7 +333,7 @@
     $('songInfo').textContent = song
       ? `${song.name} · ${fmtT(song.duration, 0)} · ~${song.bpm} BPM`
       : 'Žiadna skladba — nahraj MP3/WAV a text sa načasuje do hudby.';
-    ['autoTime', 'tapTime', 'songDel'].forEach(id => { $(id).disabled = !song; });
+    ['autoTime', 'tapTime', 'songDel', 'alignBtn'].forEach(id => { $(id).disabled = !song; });
     $('mode').querySelector('[data-v=song]').disabled = !song;
     $('scope').querySelector('[data-v=song]').disabled = !song;
   }
@@ -362,6 +363,94 @@
     slides = list;
     writeTimes();
     if (!silent) status(`Rozložené: ${n} ${plural(n, 'klip', 'klipy', 'klipov')}, ~${step.toFixed(1)} s na klip. Dolaď ťahaním značiek (Shift = posunie aj všetky ďalšie).`, 'ok');
+  }
+
+  /* ---------- upratanie vloženého textu ---------- */
+  let preClean = null;
+  function setText(t, keepUndo) {
+    if (!keepUndo) { preClean = null; $('undoClean').disabled = true; }
+    S.text = t; $('text').value = t; cur = 0;
+    refreshSlides(); changed({ now: true });
+  }
+  function doClean(src, insert) {
+    const before = $('text').value;
+    const cleaned = cleanLyrics(src);
+    let t = cleaned;
+    if (insert) { const ta = $('text'); t = before.slice(0, ta.selectionStart) + cleaned + before.slice(ta.selectionEnd); }
+    setText(t, true);
+    preClean = before; $('undoClean').disabled = false;
+    const n = slides.filter(s => !s.gap).length;
+    status(`Text upratený: ${n} ${plural(n, 'klip', 'klipy', 'klipov')} (riadok = klip, hlavičky a doplnky odstránené).` +
+      (song ? ' Teraz klikni „Rozpoznať, kde sa čo spieva“.' : ' Teraz nahraj skladbu.'), 'ok');
+  }
+
+  /* ---------- AI zarovnanie (server.py + stable-ts) ---------- */
+  let aligning = false;
+  async function toMono16k(buf) {
+    const oc = new OfflineAudioContext(1, Math.ceil(buf.duration * 16000), 16000);
+    const s = oc.createBufferSource(); s.buffer = buf; s.connect(oc.destination); s.start();
+    return (await oc.startRendering()).getChannelData(0);
+  }
+  async function aiAlign() {
+    if (aligning) return;
+    if (!song) { status('Najprv nahraj skladbu.', 'err'); return; }
+    const list = slides.filter(s => !s.gap);
+    if (!list.length) { status('Najprv vlož text.', 'err'); return; }
+    const noServer = 'Rozpoznávanie potrebuje lokálny server — spusti spustit.bat a otvor http://localhost:5173';
+    if (location.protocol === 'file:') { status(noServer, 'err'); return; }
+    let st;
+    try { st = await (await fetch('/api/status')).json(); } catch (e) { st = null; }
+    if (!st || !st.ok) { status(noServer, 'err'); return; }
+    if (!st.align) { status('Server beží, ale AI nie je nainštalovaná (' + (st.error || '?') + '). Pozri README.', 'err'); return; }
+    if (slides.some(s => s.time != null) && !confirm('Prepísať existujúce časy klipov časmi z AI?')) return;
+    aligning = true; $('alignBtn').disabled = true;
+    const t0 = performance.now();
+    try {
+      status('Pripravujem zvuk…');
+      const pcm = await toMono16k(song.buf);
+      const lines = list.map(s => s.text.replace(/\*/g, '').replace(/\s*\n\s*/g, ' ').trim());
+      const head = new TextEncoder().encode(JSON.stringify({ lines, language: S.alignLang, model: S.alignModel, vocals: S.alignVocals && st.demucs }));
+      const body = new Uint8Array(4 + head.length + pcm.byteLength);
+      new DataView(body.buffer).setUint32(0, head.length, true);
+      body.set(head, 4); body.set(new Uint8Array(pcm.buffer, pcm.byteOffset, pcm.byteLength), 4 + head.length);
+      const { job } = await (await fetch('/api/align', { method: 'POST', body })).json();
+      let j;
+      for (;;) {
+        await sleep(800);
+        j = await (await fetch('/api/job/' + job)).json();
+        const el = Math.round((performance.now() - t0) / 1000);
+        if (j.state === 'error') throw new Error(j.message);
+        if (j.state === 'done') break;
+        status(`AI (${st.device}): ${j.message} · ${el} s`);
+      }
+      const res = j.result.lines;
+      // chýbajúce časy dopočítať medzi susedmi
+      const starts = res.map(r => (r ? r.start : null));
+      for (let k = 0; k < starts.length; k++) if (starts[k] == null) {
+        let a = k - 1; while (a >= 0 && starts[a] == null) a--;
+        let b = k + 1; while (b < starts.length && starts[b] == null) b++;
+        const ta = a >= 0 ? starts[a] : 0, tb = b < starts.length ? starts[b] : song.duration;
+        starts[k] = ta + ((tb - ta) * (k - a)) / (b - a);
+      }
+      // pauzy: keď je medzi riadkami dlhšie ticho, text zmizne
+      const out = [];
+      list.forEach((s, k) => {
+        s.time = Math.max(0, starts[k]);
+        out.push(s);
+        const end = res[k] ? res[k].end : null, nx = k + 1 < list.length ? starts[k + 1] : song.duration;
+        if (end != null && nx - end > 4) out.push({ text: '', time: end + 1, gap: true });
+      });
+      slides = out;
+      writeTimes();
+      const miss = res.filter(r => !r).length;
+      status(`Hotovo: ${list.length} riadkov načasovaných za ${Math.round((performance.now() - t0) / 1000)} s (jazyk ${j.result.language || '?'})` +
+        (miss ? `, ${miss} riadkov dopočítaných` : '') + '. Skontroluj prehrávaním, chyby oprav ťahaním značiek.', 'ok');
+    } catch (e) {
+      console.error(e);
+      status('Rozpoznávanie zlyhalo: ' + (e.message || e), 'err');
+    } finally {
+      aligning = false; $('alignBtn').disabled = false;
+    }
   }
 
   /* ---------- ťukanie ---------- */
@@ -869,6 +958,14 @@
     ta.value = S.text;
     ta.addEventListener('input', () => { S.text = ta.value; refreshSlides(); caretSlide(); changed(); });
     ['click', 'keyup', 'focus'].forEach(ev => ta.addEventListener(ev, caretSlide));
+    // vložený celý text piesne (Genius, alebo veľa riadkov bez prázdnych riadkov) → upratať automaticky
+    ta.addEventListener('paste', e => {
+      const p = (e.clipboardData || window.clipboardData).getData('text');
+      const lines = p.replace(/\r/g, '').split('\n');
+      if (looksLikePastedLyrics(p) || (lines.length > 4 && !lines.some(l => !l.trim()))) { e.preventDefault(); doClean(p, true); }
+    });
+    $('cleanBtn').onclick = () => doClean($('text').value, false);
+    $('undoClean').onclick = () => { if (preClean != null) { setText(preClean); status('Vrátený pôvodný text.', 'ok'); } };
     $('upper').checked = S.upper;
     $('upper').addEventListener('change', e => { S.upper = e.target.checked; changed(); });
 
@@ -940,6 +1037,10 @@
       refreshSlides(); changed({ now: true });
       status(`Importovaných ${items.filter(i => !i.gap).length} riadkov s časmi.` + (song ? '' : ' Teraz nahraj skladbu.'), 'ok');
     });
+    $('alignBtn').onclick = aiAlign;
+    $('alignLang').value = S.alignLang; $('alignLang').addEventListener('change', e => { S.alignLang = e.target.value; save(); });
+    $('alignModel').value = S.alignModel; $('alignModel').addEventListener('change', e => { S.alignModel = e.target.value; save(); });
+    $('alignVocals').checked = S.alignVocals; $('alignVocals').addEventListener('change', e => { S.alignVocals = e.target.checked; save(); });
     bindNumber('lead', 'lead', 0, 3);
     bindNumber('songMax', 'songMax', 1, 120);
     $('withAudio').checked = S.withAudio;
@@ -1041,6 +1142,7 @@
     set(k, v) { S[k] = v; changed({ now: true }); },
     setText(t) { S.text = t; $('text').value = t; refreshSlides(); changed({ now: true }); },
     exportSongBlob: () => doExport({ blob: true }),
+    aiAlign,
     pickCodec,
   };
   init();
