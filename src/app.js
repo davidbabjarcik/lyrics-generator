@@ -15,6 +15,7 @@
     w: 1920, h: 1080, fps: 30, quality: 'high', ssaa: true, scope: 'current',
     mode: 'clips', auto: false, autoSet: 'all', autoSeed: 1, lead: 0.2, songMax: 10, withAudio: true,
     alignLang: '', alignModel: 'medium', alignVocals: true,
+    rangeOn: false, rangeA: 0, rangeB: 0, // úsek skladby (rangeB 0 = do konca)
   };
   const FONTS = [
     { g: 'Vstavané (fungujú všade)', items: [['Montserrat', 900], ['Inter', 900], ['Poppins', 800], ['Archivo Black', 400], ['Anton', 400], ['Bebas Neue', 400], ['Oswald', 700], ['Barlow Condensed', 800]] },
@@ -49,6 +50,48 @@
   function curD() { const c = songMode() ? clipOf(cur) : null; return c ? c.e - c.s : S.duration; }
   function poseTime(D = curD()) { return clamp(D - Math.min(S.tout, D / 2) - 0.03, Math.min(S.tin, D / 2) + 0.01, D); }
   function totalDur() { return songMode() ? song.duration : S.duration; }
+  // vybraný úsek skladby { a, b, on } – bez úseku celá skladba
+  function range() {
+    const D = song ? song.duration : S.duration;
+    if (!song || !S.rangeOn) return { a: 0, b: D, on: false };
+    const a = clamp(S.rangeA, 0, Math.max(0, D - 0.5));
+    const b = S.rangeB > a + 0.5 ? Math.min(S.rangeB, D) : D;
+    return { a, b, on: true };
+  }
+  // "1:23.5", "83.5", "1:23" → sekundy
+  function parseT(s) {
+    const m = /^\s*(?:(\d+):)?(\d+(?:[.,]\d+)?)\s*$/.exec(String(s));
+    return m ? (+(m[1] || 0)) * 60 + parseFloat(m[2].replace(',', '.')) : null;
+  }
+  function syncRange() {
+    const r = range(), on = !!song && S.rangeOn;
+    $('rangeOn').checked = S.rangeOn;
+    if (document.activeElement !== $('rangeA')) $('rangeA').value = song ? fmtT(r.on ? r.a : S.rangeA, 1) : '';
+    if (document.activeElement !== $('rangeB')) $('rangeB').value = song ? fmtT(r.on ? r.b : (S.rangeB || song.duration), 1) : '';
+    $('rangeBox').classList.toggle('muted', !on);
+  }
+  function setRangeEdge(edge, t) {
+    if (!song) return;
+    t = clamp(t, 0, song.duration);
+    if (edge === 'a') { S.rangeA = t; if (S.rangeB && S.rangeB <= t + 0.5) S.rangeB = 0; }
+    else { S.rangeB = t; if (t <= S.rangeA + 0.5) S.rangeA = 0; }
+    S.rangeOn = true;
+    syncRange(); changed();
+    const r = range();
+    status(`Úsek ${fmtT(r.a, 1)} – ${fmtT(r.b, 1)} (${(r.b - r.a).toFixed(1)} s). Prehrávanie, export aj rozpoznávanie použijú len tento úsek.`, 'ok');
+  }
+  // vyreže časť zvuku (s krátkym dolaďovaním hrán, aby necvakalo)
+  function sliceBuffer(buf, a, b) {
+    const sr = buf.sampleRate, i0 = Math.floor(a * sr), n = Math.max(1, Math.floor(b * sr) - i0);
+    const out = new AudioBuffer({ length: n, numberOfChannels: buf.numberOfChannels, sampleRate: sr });
+    const fade = Math.min(Math.floor(sr * 0.012), Math.floor(n / 4));
+    for (let c = 0; c < buf.numberOfChannels; c++) {
+      const d = buf.getChannelData(c).slice(i0, i0 + n);
+      for (let i = 0; i < fade; i++) { const g = i / fade; d[i] *= g; d[n - 1 - i] *= g; }
+      out.copyToChannel(d, c);
+    }
+    return out;
+  }
   function bitrate(W, H, fps) { return Math.round(Math.min(240e6, Math.max(2e6, W * H * fps * BPP[S.quality]))); }
   function plural(n, a, b, c) { return n === 1 ? a : n >= 2 && n <= 4 ? b : c; }
   function fmtT(t, dec = 1) {
@@ -265,7 +308,11 @@
       ? '<svg viewBox="0 0 12 12"><rect x="1.5" y="1" width="3" height="10"/><rect x="7.5" y="1" width="3" height="10"/></svg>'
       : '<svg viewBox="0 0 12 12"><path d="M2 1l9 5-9 5z"/></svg>';
     if (songMode()) {
-      if (p) { if (tNow >= song.duration - 0.05) tNow = 0; audioPlay(tNow); }
+      if (p) {
+        const r = range();
+        if (tNow < r.a - 0.01 || tNow >= r.b - 0.05) tNow = r.a;
+        audioPlay(tNow);
+      }
       else audioStop();
     }
     dirty = true;
@@ -282,7 +329,10 @@
       if (songMode()) {
         if (actx && src) {
           tNow = actx.currentTime - t0;
-          if (tNow >= song.duration) { tNow = song.duration; if (tap) endTap(); setPlaying(false); }
+          const r = range();
+          if (r.on && tNow >= r.b) {
+            if (tap) { endTap(); tNow = r.b; setPlaying(false); } else seek(r.a); // úsek hrá dookola
+          } else if (tNow >= song.duration) { tNow = song.duration; if (tap) endTap(); setPlaying(false); }
           followPlayhead();
         }
       } else { tNow += dt; if (tNow >= S.duration) tNow %= S.duration; }
@@ -320,6 +370,7 @@
     view = { a: 0, b: song.duration };
     if (isNew) {
       S.bpm = Math.round(an.bpm); $('bpm').value = S.bpm;
+      S.rangeOn = false; S.rangeA = 0; S.rangeB = 0;
       try { await idb.put('song', file); } catch (e) { console.warn('Skladbu sa nepodarilo zapamätať:', e); }
     }
     S.mode = 'song';
@@ -333,7 +384,8 @@
     $('songInfo').textContent = song
       ? `${song.name} · ${fmtT(song.duration, 0)} · ~${song.bpm} BPM`
       : 'Žiadna skladba — nahraj MP3/WAV a text sa načasuje do hudby.';
-    ['autoTime', 'tapTime', 'songDel', 'alignBtn'].forEach(id => { $(id).disabled = !song; });
+    ['autoTime', 'tapTime', 'songDel', 'alignBtn', 'rangeOn', 'rangeA', 'rangeB', 'setA', 'setB'].forEach(id => { $(id).disabled = !song; });
+    syncRange();
     $('mode').querySelector('[data-v=song]').disabled = !song;
     $('scope').querySelector('[data-v=song]').disabled = !song;
   }
@@ -355,8 +407,9 @@
     if (!song) return;
     const list = slides.filter(s => !s.gap);
     if (!list.length) { status('Najprv napíš text.', 'err'); return; }
-    const beat = 60 / Math.max(20, S.bpm), n = list.length;
-    const a = song.start, b = Math.max(song.start + n * beat, song.end - 2 * beat);
+    const beat = 60 / Math.max(20, S.bpm), n = list.length, r = range();
+    const a = Math.max(song.start, r.a), end = Math.min(song.end, r.b) - (r.on ? beat : 2 * beat);
+    const b = Math.max(a + n * beat, end);
     const step = (b - a) / n;
     const snap = t => song.phase + Math.round((t - song.phase) / beat) * beat;
     list.forEach((s, k) => { s.time = Math.max(0, snap(a + k * step)); });
@@ -386,9 +439,9 @@
 
   /* ---------- AI zarovnanie (server.py + stable-ts) ---------- */
   let aligning = false;
-  async function toMono16k(buf) {
-    const oc = new OfflineAudioContext(1, Math.ceil(buf.duration * 16000), 16000);
-    const s = oc.createBufferSource(); s.buffer = buf; s.connect(oc.destination); s.start();
+  async function toMono16k(buf, a = 0, b = buf.duration) {
+    const oc = new OfflineAudioContext(1, Math.max(1, Math.ceil((b - a) * 16000)), 16000);
+    const s = oc.createBufferSource(); s.buffer = buf; s.connect(oc.destination); s.start(0, a, b - a);
     return (await oc.startRendering()).getChannelData(0);
   }
   async function aiAlign() {
@@ -406,8 +459,9 @@
     aligning = true; $('alignBtn').disabled = true;
     const t0 = performance.now();
     try {
-      status('Pripravujem zvuk…');
-      const pcm = await toMono16k(song.buf);
+      const rg = range();
+      status('Pripravujem zvuk…' + (rg.on ? ` (úsek ${fmtT(rg.a, 1)} – ${fmtT(rg.b, 1)})` : ''));
+      const pcm = await toMono16k(song.buf, rg.a, rg.b);
       const lines = list.map(s => s.text.replace(/\*/g, '').replace(/\s*\n\s*/g, ' ').trim());
       const head = new TextEncoder().encode(JSON.stringify({ lines, language: S.alignLang, model: S.alignModel, vocals: S.alignVocals && st.demucs }));
       const body = new Uint8Array(4 + head.length + pcm.byteLength);
@@ -423,13 +477,14 @@
         if (j.state === 'done') break;
         status(`AI (${st.device}): ${j.message} · ${el} s`);
       }
-      const res = j.result.lines;
+      // časy z AI sú od začiatku úseku → posunúť na čas v skladbe
+      const res = j.result.lines.map(x => (x ? { start: x.start + rg.a, end: x.end + rg.a } : null));
       // chýbajúce časy dopočítať medzi susedmi
       const starts = res.map(r => (r ? r.start : null));
       for (let k = 0; k < starts.length; k++) if (starts[k] == null) {
         let a = k - 1; while (a >= 0 && starts[a] == null) a--;
         let b = k + 1; while (b < starts.length && starts[b] == null) b++;
-        const ta = a >= 0 ? starts[a] : 0, tb = b < starts.length ? starts[b] : song.duration;
+        const ta = a >= 0 ? starts[a] : rg.a, tb = b < starts.length ? starts[b] : rg.b;
         starts[k] = ta + ((tb - ta) * (k - a)) / (b - a);
       }
       // pauzy: keď je medzi riadkami dlhšie ticho, text zmizne
@@ -437,13 +492,13 @@
       list.forEach((s, k) => {
         s.time = Math.max(0, starts[k]);
         out.push(s);
-        const end = res[k] ? res[k].end : null, nx = k + 1 < list.length ? starts[k + 1] : song.duration;
+        const end = res[k] ? res[k].end : null, nx = k + 1 < list.length ? starts[k + 1] : rg.b;
         if (end != null && nx - end > 4) out.push({ text: '', time: end + 1, gap: true });
       });
       slides = out;
       writeTimes();
       const miss = res.filter(r => !r).length;
-      status(`Hotovo: ${list.length} riadkov načasovaných za ${Math.round((performance.now() - t0) / 1000)} s (jazyk ${j.result.language || '?'})` +
+      status(`Hotovo: ${list.length} ${plural(list.length, 'riadok načasovaný', 'riadky načasované', 'riadkov načasovaných')}${rg.on ? ` v úseku ${fmtT(rg.a, 0)} – ${fmtT(rg.b, 0)}` : ''} za ${Math.round((performance.now() - t0) / 1000)} s (jazyk ${j.result.language || '?'})` +
         (miss ? `, ${miss} riadkov dopočítaných` : '') + '. Skontroluj prehrávaním, chyby oprav ťahaním značiek.', 'ok');
     } catch (e) {
       console.error(e);
@@ -566,9 +621,31 @@
       const x = t2x(t);
       c.fillRect(x, h - 4, 1, 4); c.fillText(fmtT(t, 0), x + 3, h - 1);
     }
+    // úsek: mimo neho stmavené, okraje oranžové
+    const rg = range();
+    if (rg.on) {
+      const xa = t2x(rg.a), xb = t2x(rg.b);
+      c.fillStyle = 'rgba(0,0,0,.62)';
+      if (xa > 0) c.fillRect(0, 0, Math.min(w, xa), h);
+      if (xb < w) c.fillRect(Math.max(0, xb), 0, w - Math.max(0, xb), h);
+      c.fillStyle = '#ffb347'; c.textBaseline = 'bottom'; c.font = '700 9px "Segoe UI", sans-serif';
+      for (const [x, lbl, dir] of [[xa, 'OD', 1], [xb, 'DO', -1]]) {
+        if (x < -2 || x > w + 2) continue;
+        c.fillRect(Math.round(x) - 1, 0, 2, h);
+        c.fillRect(dir > 0 ? x : x - 6, h - 16, 6, 16);
+        c.fillText(lbl, dir > 0 ? x + 8 : x - 22, h - 14);
+      }
+    }
     // prehrávacia hlava
     const px = t2x(tNow);
     c.fillStyle = '#ff3b3b'; c.fillRect(Math.round(px) - 1, 0, 2, h);
+  }
+  function rangeEdgeAt(x) {
+    const rg = range();
+    if (!rg.on) return null;
+    if (Math.abs(t2x(rg.a) - x) < 7) return 'a';
+    if (Math.abs(t2x(rg.b) - x) < 7) return 'b';
+    return null;
   }
   function markerAt(x) {
     let best = -1, bd = 7;
@@ -580,8 +657,9 @@
     tc.addEventListener('mousedown', e => {
       if (!songMode()) return;
       e.preventDefault();
-      const x = pos(e), m = markerAt(x);
-      if (m >= 0) {
+      const x = pos(e), m = markerAt(x), edge = rangeEdgeAt(x);
+      if (edge) { drag = { kind: 'range', edge }; }
+      else if (m >= 0) {
         drag = { kind: 'mark', idx: m, shift: e.shiftKey, orig: slides.map(s => s.time), t0: x2t(x) };
         cur = slides[m].gap ? cur : m; markChips();
       } else { drag = { kind: 'seek' }; seek(x2t(x)); }
@@ -589,8 +667,13 @@
     window.addEventListener('mousemove', e => {
       if (!songMode()) return;
       const x = pos(e);
-      if (!drag) { tc.style.cursor = markerAt(x) >= 0 ? 'ew-resize' : 'crosshair'; return; }
+      if (!drag) { tc.style.cursor = rangeEdgeAt(x) || markerAt(x) >= 0 ? 'ew-resize' : 'crosshair'; return; }
       if (drag.kind === 'seek') { seek(x2t(x)); return; }
+      if (drag.kind === 'range') {
+        const t = clamp(x2t(x), 0, song.duration), rg = range();
+        if (drag.edge === 'a') S.rangeA = Math.min(t, rg.b - 0.5); else S.rangeB = Math.max(t, rg.a + 0.5);
+        syncRange(); dirty = true; return;
+      }
       const dt = x2t(x) - drag.t0, o = drag.orig, me = o[drag.idx];
       if (drag.shift) {
         slides.forEach((s, j) => { if (o[j] != null && o[j] >= me) s.time = Math.max(0, o[j] + dt); });
@@ -603,6 +686,7 @@
     });
     window.addEventListener('mouseup', () => {
       if (drag && drag.kind === 'mark') writeTimes();
+      if (drag && drag.kind === 'range') { changed(); const r = range(); if (tNow < r.a || tNow > r.b) seek(r.a); }
       drag = null;
     });
     tc.addEventListener('wheel', e => {
@@ -662,17 +746,18 @@
     const W = even(S.w), H = even(S.h);
     const st = styleOf(cur), stTxt = `${String(st + 1).padStart(2, '0')} ${STYLES[st].name}${S.auto ? ' (AUTO)' : ''}`;
     if (songMode()) {
-      $('vinfo').textContent = `${S.w}×${S.h} · ${S.fps} FPS · SKLADBA ${fmtT(song.duration, 0)} · KLIP ${cur + 1}/${slides.length} · ${stTxt}`;
+      const rg = range();
+      $('vinfo').textContent = `${S.w}×${S.h} · ${S.fps} FPS · ${rg.on ? `ÚSEK ${fmtT(rg.a, 0)}–${fmtT(rg.b, 0)}` : 'SKLADBA ' + fmtT(song.duration, 0)} · KLIP ${cur + 1}/${slides.length} · ${stTxt}`;
     } else {
       $('vinfo').textContent = `${S.w}×${S.h} · ${S.fps} FPS · KLIP ${slides.length ? cur + 1 : 0}/${slides.length} · ${stTxt}`;
     }
     $('beatsOut').textContent = `≈ ${(S.duration * S.bpm / 60).toFixed(1)} dôb`;
     const scope = S.scope === 'song' && songMode() ? 'song' : S.scope === 'song' ? 'current' : S.scope;
-    const dur = scope === 'song' ? song.duration : S.duration;
+    const dur = scope === 'song' ? range().b - range().a : S.duration;
     const frames = Math.max(1, Math.ceil(dur * S.fps));
     const mb = (bitrate(W, H, S.fps) * dur) / 8 / 1e6;
     const k = S.ssaa ? ssaaK(W, H) : 1;
-    $('estimate').textContent = `${frames} snímok ${scope === 'song' ? 'v skladbe' : 'na klip'} · max. ~${mb < 10 ? mb.toFixed(1) : Math.round(mb)} MB · ${(bitrate(W, H, S.fps) / 1e6).toFixed(0)} Mb/s` +
+    $('estimate').textContent = `${frames} snímok ${scope === 'song' ? (S.rangeOn ? 'v úseku' : 'v skladbe') : 'na klip'} · max. ~${mb < 10 ? mb.toFixed(1) : Math.round(mb)} MB · ${(bitrate(W, H, S.fps) / 1e6).toFixed(0)} Mb/s` +
       (k > 1 ? ` · vyhladzovanie ${k}×` : '');
     document.querySelectorAll('#resChips .chip').forEach(c => c.classList.toggle('on', c.dataset.w == S.w && c.dataset.h == S.h));
     document.querySelectorAll('#scope button').forEach(b => b.classList.toggle('on', b.dataset.v === scope));
@@ -827,10 +912,11 @@
     return ` · zostáva ~${s >= 60 ? Math.floor(s / 60) + ' min ' : ''}${Math.round(s % 60)} s`;
   }
   async function exportSong(SS, W, H, opts = {}) {
-    const name = `${slug(song.name)}_${W}x${H}_${SS.fps}fps.mp4`;
+    const rg = range(), dur = rg.b - rg.a, frames = Math.max(1, Math.ceil(dur * SS.fps));
+    const part = rg.on ? `_${fmtT(rg.a, 0).replace(':', '-')}_${fmtT(rg.b, 0).replace(':', '-')}` : '';
+    const name = `${slug(song.name)}${part}_${W}x${H}_${SS.fps}fps.mp4`;
     const tg = await songTarget(name, opts.blob);
     const clipsSnap = clips.map(c => Object.assign({}, c));
-    const dur = song.duration, frames = Math.max(1, Math.ceil(dur * SS.fps));
     let ok = false;
     try {
       await ensureFont();
@@ -839,16 +925,16 @@
       let audio = null;
       if (SS.withAudio) {
         const ac = await pickAudio(song.buf.sampleRate);
-        if (ac) audio = { buf: song.buf, codec: ac };
+        if (ac) audio = { buf: rg.on ? sliceBuffer(song.buf, rg.a, rg.b) : song.buf, codec: ac };
         else status('Prehliadač nevie kódovať zvuk — video bude bez zvuku.', 'warn');
       }
       const tStart = performance.now();
       const k = await encodeMovie({
         W, H, fps: SS.fps, frames, codec, target: tg.target, fastStart: tg.fastStart, ssaa: SS.ssaa, audio, gop: Math.round(SS.fps * 2),
-        render: (ctx, w, h, i) => renderSongFrame(ctx, w, h, i / SS.fps, SS, clipsSnap),
+        render: (ctx, w, h, i) => renderSongFrame(ctx, w, h, rg.a + i / SS.fps, SS, clipsSnap),
         onProg: (fr, tot) => {
           $('bar').style.width = ((fr / tot) * 100).toFixed(1) + '%';
-          status(`Skladba · ${fmtT(fr / SS.fps, 0)} / ${fmtT(dur, 0)} · snímka ${fr}/${tot} · ${codec.name}${audio ? ' + ' + audio.codec.name : ''}${eta(tStart, fr, tot)}`);
+          status(`${rg.on ? 'Úsek' : 'Skladba'} · ${fmtT(fr / SS.fps, 0)} / ${fmtT(dur, 0)} · snímka ${fr}/${tot} · ${codec.name}${audio ? ' + ' + audio.codec.name : ''}${eta(tStart, fr, tot)}`);
         },
       });
       if (tg.ws) await tg.ws.close();
@@ -857,7 +943,7 @@
       let where = tg.where;
       if (tg.where === 'dl') where = await saveBlob(new Blob([tg.target.buffer], { type: 'video/mp4' }), name);
       const loc = where === 'dir' ? `do priečinka „${dirHandle.name}“` : where === 'file' ? `ako „${tg.label}“` : 'do Stiahnutých súborov';
-      let msg = `Hotovo: video skladby uložené ${loc} (${W}×${H}, ${SS.fps} FPS, ${fmtT(dur, 0)}, ${codec.name}${audio ? ' + ' + audio.codec.name : ', bez zvuku'}${k > 1 ? ', vyhladzovanie ' + k + '×' : ''}).`;
+      let msg = `Hotovo: video ${rg.on ? `úseku ${fmtT(rg.a, 0)} – ${fmtT(rg.b, 0)}` : 'skladby'} uložené ${loc} (${W}×${H}, ${SS.fps} FPS, ${fmtT(dur, 0)}, ${codec.name}${audio ? ' + ' + audio.codec.name : ', bez zvuku'}${k > 1 ? ', vyhladzovanie ' + k + '×' : ''}).`;
       if (codec.mux !== 'avc') msg += ' Pozor: použil sa VP9 — pre H.264 otvor generátor v Chrome alebo Edge.';
       status(msg, codec.mux !== 'avc' ? 'warn' : 'ok');
     } finally {
@@ -1041,6 +1127,21 @@
     $('alignLang').value = S.alignLang; $('alignLang').addEventListener('change', e => { S.alignLang = e.target.value; save(); });
     $('alignModel').value = S.alignModel; $('alignModel').addEventListener('change', e => { S.alignModel = e.target.value; save(); });
     $('alignVocals').checked = S.alignVocals; $('alignVocals').addEventListener('change', e => { S.alignVocals = e.target.checked; save(); });
+    // úsek skladby
+    $('rangeOn').addEventListener('change', e => {
+      S.rangeOn = e.target.checked; syncRange(); changed();
+      const r = range(); if (S.rangeOn && (tNow < r.a || tNow > r.b)) seek(r.a);
+    });
+    for (const [id, edge] of [['rangeA', 'a'], ['rangeB', 'b']]) {
+      $(id).addEventListener('change', e => {
+        const t = parseT(e.target.value);
+        if (t == null) { status('Zadaj čas ako 1:23 alebo 83.5', 'err'); syncRange(); return; }
+        setRangeEdge(edge, t); e.target.blur();
+      });
+      $(id).addEventListener('keydown', e => { if (e.key === 'Enter') e.target.dispatchEvent(new Event('change')); });
+    }
+    $('setA').onclick = () => setRangeEdge('a', tNow);
+    $('setB').onclick = () => setRangeEdge('b', tNow);
     bindNumber('lead', 'lead', 0, 3);
     bindNumber('songMax', 'songMax', 1, 120);
     $('withAudio').checked = S.withAudio;
@@ -1113,7 +1214,13 @@
         if (e.key === 'Escape') { e.preventDefault(); endTap(); return; }
         if (e.code === 'Space') { e.preventDefault(); setPlaying(!playing); return; }
       }
-      if (e.code === 'Space' && !/^(TEXTAREA|INPUT|SELECT|BUTTON)$/.test(document.activeElement.tagName)) { e.preventDefault(); setPlaying(!playing); }
+      const typing = /^(TEXTAREA|INPUT|SELECT)$/.test(document.activeElement.tagName);
+      if (e.code === 'Space' && !typing && document.activeElement.tagName !== 'BUTTON') { e.preventDefault(); setPlaying(!playing); }
+      // I / O = začiatok / koniec úseku na aktuálnej pozícii (ako vo video editoroch)
+      if (!typing && songMode() && !e.ctrlKey && !e.altKey && !e.metaKey) {
+        if (e.code === 'KeyI') { e.preventDefault(); setRangeEdge('a', tNow); }
+        if (e.code === 'KeyO') { e.preventDefault(); setRangeEdge('b', tNow); }
+      }
     }, true);
 
     if (!('VideoEncoder' in window)) $('banner').classList.add('show');

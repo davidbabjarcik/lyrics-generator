@@ -211,6 +211,11 @@ input[type=color]::-webkit-color-swatch{border:0}
       <div class="field"><div class="row"><button class="btn full" id="songLoad">Nahrať skladbu…</button><button class="btn" id="songDel" title="Odstrániť skladbu">✕</button></div>
         <input type="file" id="songFile" accept="audio/*,.mp3,.wav,.m4a,.aac,.ogg,.flac,.opus" hidden></div>
       <p class="sub" id="songInfo">Žiadna skladba — nahraj MP3/WAV a text sa načasuje do hudby.</p>
+      <div class="field"><label class="check" style="margin-top:0" title="Prehrávanie, export, automatické rozloženie aj rozpoznávanie použijú len vybraný úsek"><input type="checkbox" id="rangeOn"><span class="lbl">Len časť skladby</span></label>
+        <div class="grid2" id="rangeBox" style="margin-top:6px">
+          <div><div class="lbl" style="margin-bottom:5px">Od</div><div class="row"><input type="text" id="rangeA" placeholder="0:00"><button class="btn" id="setA" title="Začiatok úseku = aktuálna pozícia (kláves I)">I</button></div></div>
+          <div><div class="lbl" style="margin-bottom:5px">Do</div><div class="row"><input type="text" id="rangeB" placeholder="koniec"><button class="btn" id="setB" title="Koniec úseku = aktuálna pozícia (kláves O)">O</button></div></div>
+        </div></div>
       <div class="field"><div class="lbl">Časovanie textu</div>
         <div class="grid2"><button class="btn" id="autoTime" title="Rozloží klipy rovnomerne po hudbe, zarovnané na doby">Automaticky</button><button class="btn" id="tapTime" title="Prehrá skladbu, Enterom označ začiatok každého klipu">Ťukať ⏎</button></div>
         <div class="grid2" style="margin-top:6px"><button class="btn" id="lrcLoad">Import LRC/SRT</button><button class="btn" id="clearTime">Zmazať časy</button></div>
@@ -227,7 +232,7 @@ input[type=color]::-webkit-color-swatch{border:0}
         <div class="field"><div class="lbl">Max. klip (s)</div><input type="number" id="songMax" min="1" max="120" step="0.5" title="Najdlhší čas, čo text ostane na obraze (pri dlhých pauzách zmizne)"></div>
       </div>
       <label class="check"><input type="checkbox" id="withAudio"><span class="lbl">Zvuk do videa</span></label>
-      <p class="hint" id="songHint">Čas sa zapíše do textu ako <code>[01:23.45]</code>. Klip iba s časom = pauza. Značky na časovej osi sa dajú ťahať myšou.</p>
+      <p class="hint" id="songHint">Čas sa zapíše do textu ako <code>[01:23.45]</code>. Klip iba s časom = pauza. Značky na časovej osi sa dajú ťahať myšou. Úsek: klávesy <b>I</b> / <b>O</b> alebo ťahaj oranžové okraje.</p>
     </section>
     <section id="timeSec">
       <h2><b>04</b> ČAS</h2>

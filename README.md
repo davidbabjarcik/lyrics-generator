@@ -30,6 +30,9 @@ python -m venv .venv
 2. Dolaď časy: **Ťukať ⏎** (počas prehrávania stlač Enter na začiatku každého klipu), ťahaním značiek
    na časovej osi (Shift = posunie aj všetky ďalšie) alebo **Import LRC/SRT**.
 3. Export **Celá skladba** = jedno MP4 so zvukom (H.264 + AAC), uložené priamo do súboru.
+4. Len časť piesne: zaškrtni **Len časť skladby** a nastav Od/Do (klávesy **I**/**O** počas prehrávania
+   alebo ťahaj oranžové okraje na časovej osi). Prehrávanie, export, automatické rozloženie aj AI
+   rozpoznávanie potom pracujú len s týmto úsekom — stačí vložiť text len tej časti.
 
 Export: H.264 MP4, čierne pozadie, voliteľné 2× vyhladzovanie (SSAA), kvalita až „Ultra (master)“.
 Nastavenia aj nahrané fonty sa pamätajú v prehliadači.

@@ -44,6 +44,8 @@ Po každej zmene v `src/` treba spustiť `python build.py`.
 Nahraná skladba (dekódovaná na 48 kHz, pamätá sa v IndexedDB) + text, kde klip začína časom `[mm:ss.cc]`
 (klip iba s časom = pauza). Časy: Automaticky (rovnomerne po dobách), Ťukanie (Enter počas prehrávania),
 import LRC/SRT, ťahanie značiek na časovej osi. Klip trvá do ďalšieho času (max. `songMax`), začína o `lead` skôr.
+Úsek skladby (`S.rangeOn/rangeA/rangeB`, `range()`; klávesy I/O, ťahanie oranžových okrajov): prehrávanie
+v slučke, export len úseku (zvuk cez `sliceBuffer()`), automatické rozloženie aj AI (`toMono16k(buf, a, b)` + posun časov).
 Export celej skladby = jedno MP4 s H.264 + AAC (fallback Opus), zapisované priamo do súboru (File System Access).
 
 Nový štýl: objekt `{ key, name, lay?, draw(R) }` v `STYLES`. `R.L` = rozloženie (lines, words, px, capH,
@@ -57,7 +59,7 @@ cx, cy, blockW…), `R.t` čas, `R.D` dĺžka, `R.pin/R.pout` priebeh nábehu/od
 - Pozadie čierne (`S.bg`), rozlíšenie zadáva používateľ (párne čísla — `even()` pri exporte).
 - Žiadne externé CDN — všetko musí fungovať offline v jednom súbore.
 - Testovanie: Playwright/Chromium — render kontaktného hárku všetkých štýlov v rôznych časoch
-  a export (kontrola cez ffprobe: rozlíšenie, počet snímok, dĺžka). Spustenie: `node tests/smoke.mjs`
+  a export (kontrola cez ffprobe: rozlíšenie, počet snímok, dĺžka). Spustenie: `node tests/smoke.mjs`, `node tests/align.mjs`, `node tests/range.mjs`
   (playwright-core + nainštalovaný Edge; testovacia skladba `tests/out/test120.wav` sa generuje Pythonom).
 - Lokálny server pre náhľad: `.claude/launch.json` (python http.server na porte 5173; 8080 je blokovaný).
 
